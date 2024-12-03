@@ -3,7 +3,6 @@ import pytesseract
 from PIL import Image, ImageOps
 import re
 from fpdf import FPDF
-import os
 
 # Configure Tesseract executable path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
@@ -12,7 +11,7 @@ pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
 def extract_text(image):
     try:
         # Use a custom Tesseract configuration for better accuracy
-        custom_config = r'--oem 3 --psm 6'  # Default OCR Engine and Assume Block of Text
+        custom_config = r'--oem 3 --psm 6'
         return pytesseract.image_to_string(image, config=custom_config)
     except Exception as e:
         st.error(f"Error during OCR: {e}")
@@ -20,16 +19,23 @@ def extract_text(image):
 
 # Preprocess Image
 def preprocess_image(image):
-    # Resize image for better OCR accuracy
-    resized_image = image.resize((image.width * 2, image.height * 2), Image.ANTIALIAS)
+    try:
+        # Ensure the image is in PIL format
+        image = image.convert("RGB")
 
-    # Convert to grayscale
-    grayscale_image = ImageOps.grayscale(resized_image)
+        # Resize image for better OCR accuracy
+        resized_image = image.resize((image.width * 2, image.height * 2))
 
-    # Apply thresholding (binarization)
-    binary_image = grayscale_image.point(lambda x: 0 if x < 128 else 255, '1')
+        # Convert to grayscale
+        grayscale_image = ImageOps.grayscale(resized_image)
 
-    return binary_image
+        # Apply thresholding (binarization)
+        binary_image = grayscale_image.point(lambda x: 0 if x < 128 else 255, '1')
+
+        return binary_image
+    except Exception as e:
+        st.error(f"Error during preprocessing: {e}")
+        return image
 
 # Field Extraction Function
 def extract_fields(text):
@@ -57,34 +63,15 @@ def extract_fields(text):
 
     return fields
 
-# Document Classifier
-def classify_document(text):
-    if "bank" in text.lower() or "account" in text.lower():
-        return "Bank Statement"
-    elif "VAT" in text or "TOTAL" in text:
-        return "Slip/Receipt"
-    elif "Invoice" in text or "Bill" in text:
-        return "Invoice"
-    else:
-        return "Unknown Document"
-
 # PDF Generation Function
-def generate_pdf(fields, logo_path=None):
+def generate_pdf(fields):
     pdf = FPDF()
     pdf.add_page()
-
-    # Add Logo if Available
-    if logo_path and os.path.exists(logo_path):
-        try:
-            pdf.image(logo_path, x=10, y=8, w=30)
-            pdf.ln(20)  # Add spacing below the logo
-        except Exception:
-            st.warning("Error loading logo. Proceeding without it.")
 
     # Title
     pdf.set_font("Arial", style="B", size=16)
     pdf.cell(0, 10, "Extracted Document Data", ln=True, align="C")
-    pdf.ln(10)
+    pdf.ln(20)  # Add spacing below the title
 
     # Add Fields in Table Format
     pdf.set_font("Arial", size=12)
@@ -109,8 +96,6 @@ st.write("Upload any document to extract fields and generate a PDF.")
 
 # Upload Document
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
-logo_file = st.file_uploader("Upload Logo (optional, PNG only)", type=["png"])
-logo_path = logo_file.name if logo_file else None
 
 if uploaded_file:
     # Display uploaded image
@@ -129,10 +114,6 @@ if uploaded_file:
     st.subheader("Raw OCR Text")
     st.text(extracted_text)
 
-    # Classify Document
-    doc_type = classify_document(extracted_text)
-    st.subheader(f"Document Type: {doc_type}")
-
     # Extract fields
     st.write("Extracting fields...")
     fields = extract_fields(extracted_text)
@@ -147,7 +128,7 @@ if uploaded_file:
 
     # Generate and Download PDF
     st.write("Generating PDF...")
-    pdf_file_path = generate_pdf(fields, logo_path)
+    pdf_file_path = generate_pdf(fields)
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
             label="Download Extracted Data as PDF",
