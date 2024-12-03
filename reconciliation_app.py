@@ -3,15 +3,19 @@ import pytesseract
 from PIL import Image, ImageOps
 import re
 from fpdf import FPDF
+import os
+import json
 
 # Configure Tesseract executable path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
 
+# Path for the training file
+TRAINING_FILE = "field_training.json"
+
 # OCR Function
 def extract_text(image):
     try:
-        # Use a custom Tesseract configuration for better accuracy
-        custom_config = r'--oem 3 --psm 6'
+        custom_config = r'--oem 3 --psm 6'  # Custom Tesseract config for better accuracy
         return pytesseract.image_to_string(image, config=custom_config)
     except Exception as e:
         st.error(f"Error during OCR: {e}")
@@ -20,10 +24,10 @@ def extract_text(image):
 # Preprocess Image
 def preprocess_image(image):
     try:
-        # Ensure the image is in PIL format
+        # Ensure the image is in RGB mode
         image = image.convert("RGB")
 
-        # Resize the image for better OCR accuracy while maintaining aspect ratio
+        # Resize the image for OCR, maintaining aspect ratio
         base_width = 1000
         w_percent = base_width / float(image.size[0])
         h_size = int((float(image.size[1]) * float(w_percent)))
@@ -44,37 +48,52 @@ def preprocess_image(image):
 def extract_fields(text):
     fields = {}
     try:
-        # Store Information
-        fields["Store/Institution Name"] = re.search(r'(Woolworths|Checkers|Pick n Pay|Spar|Shoprite|FNB|Capitec|Nedbank|Absa|Standard Bank)', text, re.IGNORECASE).group(0) if re.search(r'(Woolworths|Checkers|Pick n Pay|Spar|Shoprite|FNB|Capitec|Nedbank|Absa|Standard Bank)', text, re.IGNORECASE) else "Not Found"
-        fields["Branch/Location"] = re.search(r'(Branch|Location|Branch Name):?\s*(.*)', text).group(2).strip() if re.search(r'(Branch|Location|Branch Name):?\s*(.*)', text) else "Not Found"
+        # Use patterns from the training file if available
+        trained_patterns = load_training_data()
 
-        # Transaction Details
-        fields["Date"] = re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text).group(0) if re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text) else "Not Found"
-        fields["Time"] = re.search(r'\b\d{2}:\d{2}(:\d{2})?\b', text).group(0) if re.search(r'\b\d{2}:\d{2}(:\d{2})?\b', text) else "Not Found"
-        fields["Transaction/Reference Number"] = re.search(r'(Transaction|Reference|Trans|Invoice) No.*?(\d+)', text).group(2) if re.search(r'(Transaction|Reference|Trans|Invoice) No.*?(\d+)', text) else "Not Found"
+        for field, pattern in trained_patterns.items():
+            match = re.search(pattern, text)
+            fields[field] = match.group(0) if match else "Not Found"
 
-        # Account or Bank Statement Info
-        fields["Account Number"] = re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text).group(1) if re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text) else "Not Found"
-        fields["Transaction Amount"] = re.search(r'(Amount|Total|Balance|Debit|Credit).*?(\d+\.\d{2})', text, re.IGNORECASE).group(2) if re.search(r'(Amount|Total|Balance|Debit|Credit).*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
-
-        # Itemized Purchases or Transactions
-        items = re.findall(r'(\w+\s+\w+.*?\d+\.\d{2})', text)  # Matches item names and amounts
-        fields["Items/Transactions"] = items if items else ["Not Found"]
+        # Default patterns if no trained data exists
+        if not fields:
+            fields["Store/Institution Name"] = re.search(r'(Woolworths|Checkers|FNB|Capitec|Absa)', text, re.IGNORECASE).group(0) if re.search(r'(Woolworths|Checkers|FNB|Capitec|Absa)', text, re.IGNORECASE) else "Not Found"
+            fields["Date"] = re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text).group(0) if re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text) else "Not Found"
+            fields["Transaction Amount"] = re.search(r'(Amount|Total|Balance|Debit|Credit).*?(\d+\.\d{2})', text).group(1) if re.search(r'(Amount|Total|Balance|Debit|Credit).*?(\d+\.\d{2})', text) else "Not Found"
 
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
 
     return fields
 
+# Machine Learning: Save Training Data
+def save_training_data(field_name, pattern):
+    training_data = load_training_data()
+    training_data[field_name] = pattern
+    with open(TRAINING_FILE, "w") as f:
+        json.dump(training_data, f)
+
+# Machine Learning: Load Training Data
+def load_training_data():
+    if os.path.exists(TRAINING_FILE):
+        with open(TRAINING_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
 # PDF Generation Function
-def generate_pdf(fields):
+def generate_pdf(fields, logo_path):
     pdf = FPDF()
     pdf.add_page()
+
+    # Add Logo
+    if os.path.exists(logo_path):
+        pdf.image(logo_path, x=10, y=8, w=30)
+        pdf.ln(20)  # Add spacing below the logo
 
     # Title
     pdf.set_font("Arial", style="B", size=16)
     pdf.cell(0, 10, "Extracted Document Data", ln=True, align="C")
-    pdf.ln(10)  # Add spacing below the title
+    pdf.ln(10)
 
     # Add Fields in Table Format
     pdf.set_font("Arial", size=12)
@@ -84,23 +103,19 @@ def generate_pdf(fields):
 
     for field, value in fields.items():
         pdf.cell(90, 10, field, 1)
-        if isinstance(value, list):
-            wrapped_text = ", ".join(value)[:90]  # Limit text to fit within the cell
-            pdf.cell(100, 10, wrapped_text, 1, 1)
-        else:
-            wrapped_text = str(value)[:90]  # Limit text to fit within the cell
-            pdf.cell(100, 10, wrapped_text, 1, 1)
+        pdf.multi_cell(100, 10, str(value), 1)
 
     pdf_file_path = "extracted_data.pdf"
     pdf.output(pdf_file_path)
     return pdf_file_path
 
 # Streamlit App
-st.title("Universal Document Processor")
-st.write("Upload any document to extract fields and generate a PDF.")
+st.title("Universal Document Processor with Learning")
+st.write("Upload any document to extract fields, generate a PDF, and improve field extraction with AI.")
 
 # Upload Document
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
+logo_path = "logo.png"  # Path to the logo file (ensure it's in the same directory)
 
 if uploaded_file:
     # Display uploaded image
@@ -126,14 +141,11 @@ if uploaded_file:
     # Display extracted fields
     st.subheader("Extracted Fields")
     for field, value in fields.items():
-        if isinstance(value, list):
-            st.write(f"**{field}:** {', '.join(value)}")
-        else:
-            st.write(f"**{field}:** {value}")
+        st.write(f"**{field}:** {value}")
 
     # Generate and Download PDF
     st.write("Generating PDF...")
-    pdf_file_path = generate_pdf(fields)
+    pdf_file_path = generate_pdf(fields, logo_path)
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
             label="Download Extracted Data as PDF",
@@ -141,5 +153,19 @@ if uploaded_file:
             file_name="extracted_data.pdf",
             mime="application/pdf",
         )
+
+    # Machine Learning: Allow User to Correct Fields
+    st.write("Help us improve field extraction!")
+    corrected_fields = {}
+    for field, value in fields.items():
+        corrected_fields[field] = st.text_input(f"Correct '{field}':", value)
+
+    if st.button("Save Training Data"):
+        for field, corrected_value in corrected_fields.items():
+            if corrected_value != fields[field]:
+                pattern = st.text_input(f"Provide regex pattern for '{field}':", "")
+                if pattern:
+                    save_training_data(field, pattern)
+                    st.success(f"Training data saved for '{field}'!")
 else:
     st.write("Please upload a document.")
