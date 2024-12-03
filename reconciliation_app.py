@@ -5,7 +5,7 @@ import re
 from fpdf import FPDF
 
 # Configure Tesseract executable path
-pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Ensure Tesseract is installed and accessible
 
 # OCR Function
 def extract_text(image):
@@ -19,14 +19,12 @@ def extract_text(image):
 # Preprocess Image
 def preprocess_image(image):
     try:
-        # Convert to RGB and resize for better OCR
         image = image.convert("RGB")
         base_width = 1000
         w_percent = base_width / float(image.size[0])
         h_size = int((float(image.size[1]) * float(w_percent)))
         resized_image = image.resize((base_width, h_size))
 
-        # Convert to grayscale and binarize
         grayscale_image = ImageOps.grayscale(resized_image)
         binary_image = grayscale_image.point(lambda x: 0 if x < 128 else 255, '1')
         return binary_image
@@ -61,9 +59,8 @@ def extract_fields(text, doc_type):
             fields["Bank Name"] = re.search(r'(FNB|Capitec|Absa|Standard Bank|Nedbank)', text, re.IGNORECASE).group(0) if re.search(r'(FNB|Capitec|Absa|Standard Bank|Nedbank)', text, re.IGNORECASE) else "Not Found"
             fields["Account Number"] = re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text).group(1) if re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text) else "Not Found"
             fields["Balance"] = re.search(r'Balance.*?(\d+\.\d{2})', text).group(1) if re.search(r'Balance.*?(\d+\.\d{2})', text) else "Not Found"
-            fields["Transaction Dates"] = re.findall(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text)
-            transactions = re.findall(r'(Credit|Debit).*?(\d+\.\d{2})', text, re.IGNORECASE)
-            fields["Transactions"] = [f"{t[0]}: {t[1]}" for t in transactions] if transactions else "Not Found"
+            transactions = re.findall(r'(\d{2}[/-]\d{2}[/-]\d{4}).*?(Credit|Debit).*?(\d+\.\d{2})', text, re.IGNORECASE)
+            fields["Transactions"] = [f"{t[0]} - {t[1]}: {t[2]}" for t in transactions] if transactions else "Not Found"
 
         elif doc_type == "Invoice":
             fields["Invoice Number"] = re.search(r'Invoice Number.*?(\d+)', text).group(1) if re.search(r'Invoice Number.*?(\d+)', text) else "Not Found"
@@ -103,18 +100,15 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Dynamic Document Processor")
-st.write("Upload any document to classify, extract fields, and generate a PDF.")
+st.title("Enhanced Document Processor")
+st.write("Upload a document to classify, extract fields, and generate a PDF.")
 
-# Upload File
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
 
 if uploaded_file:
-    # Display uploaded image
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Document", use_column_width=True)
 
-    # Preprocess and OCR
     st.write("Preprocessing image...")
     processed_image = preprocess_image(image)
     st.image(processed_image, caption="Preprocessed Image", use_column_width=True)
@@ -122,20 +116,16 @@ if uploaded_file:
     st.write("Extracting text...")
     extracted_text = extract_text(processed_image)
 
-    # Classify Document
     doc_type = classify_document(extracted_text)
     st.subheader(f"Document Type: {doc_type}")
 
-    # Extract Fields
     st.write("Extracting fields...")
     fields = extract_fields(extracted_text, doc_type)
 
-    # Display Fields
     st.subheader("Extracted Fields")
     for field, value in fields.items():
         st.write(f"**{field}:** {value}")
 
-    # Generate PDF
     st.write("Generating PDF...")
     pdf_file_path = generate_pdf(fields)
     with open(pdf_file_path, "rb") as pdf_file:
