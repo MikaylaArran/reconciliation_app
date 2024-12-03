@@ -23,8 +23,11 @@ def preprocess_image(image):
         # Ensure the image is in PIL format
         image = image.convert("RGB")
 
-        # Resize image for better OCR accuracy
-        resized_image = image.resize((image.width * 2, image.height * 2))
+        # Resize the image for better OCR accuracy while maintaining aspect ratio
+        base_width = 1000
+        w_percent = base_width / float(image.size[0])
+        h_size = int((float(image.size[1]) * float(w_percent)))
+        resized_image = image.resize((base_width, h_size))
 
         # Convert to grayscale
         grayscale_image = ImageOps.grayscale(resized_image)
@@ -71,7 +74,7 @@ def generate_pdf(fields):
     # Title
     pdf.set_font("Arial", style="B", size=16)
     pdf.cell(0, 10, "Extracted Document Data", ln=True, align="C")
-    pdf.ln(20)  # Add spacing below the title
+    pdf.ln(10)  # Add spacing below the title
 
     # Add Fields in Table Format
     pdf.set_font("Arial", size=12)
@@ -82,9 +85,11 @@ def generate_pdf(fields):
     for field, value in fields.items():
         pdf.cell(90, 10, field, 1)
         if isinstance(value, list):
-            pdf.cell(100, 10, ", ".join(value), 1, 1)
+            wrapped_text = ", ".join(value)[:90]  # Limit text to fit within the cell
+            pdf.cell(100, 10, wrapped_text, 1, 1)
         else:
-            pdf.cell(100, 10, value, 1, 1)
+            wrapped_text = str(value)[:90]  # Limit text to fit within the cell
+            pdf.cell(100, 10, wrapped_text, 1, 1)
 
     pdf_file_path = "extracted_data.pdf"
     pdf.output(pdf_file_path)
