@@ -1,15 +1,11 @@
 import streamlit as st
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageOps
 import re
 from fpdf import FPDF
 
 # Configure Tesseract executable path
-try:
-    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"  # Update this path if needed
-except FileNotFoundError:
-    st.error("Tesseract OCR is not installed. Please install it and ensure the path is configured correctly.")
-    st.stop()
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
 
 # OCR Function
 def extract_text(image):
@@ -18,6 +14,14 @@ def extract_text(image):
     except Exception as e:
         st.error(f"Error during OCR: {e}")
         return ""
+
+# Preprocess Image
+def preprocess_image(image):
+    # Convert to grayscale
+    grayscale_image = ImageOps.grayscale(image)
+    # Apply thresholding (binarization)
+    binary_image = grayscale_image.point(lambda x: 0 if x < 128 else 255, '1')
+    return binary_image
 
 # Field Extraction Function
 def extract_fields(text):
@@ -56,17 +60,30 @@ def extract_fields(text):
     return fields
 
 # PDF Generation Function
-def generate_pdf(fields):
+def generate_pdf(fields, logo_path):
     pdf = FPDF()
     pdf.add_page()
+    
+    # Add Logo
+    pdf.image(logo_path, x=10, y=8, w=30)  # Adjust as needed for position/size
+    
+    # Title
+    pdf.set_font("Arial", style="B", size=16)
+    pdf.cell(0, 10, "Extracted Slip Data", ln=True, align="C")
+    pdf.ln(10)  # Add some vertical spacing
+
+    # Add Fields in Table Format
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Extracted Fields", ln=True, align="C")
+    pdf.set_fill_color(200, 220, 255)  # Light blue for table header background
+    pdf.cell(90, 10, "Field", 1, 0, "C", fill=True)
+    pdf.cell(100, 10, "Value", 1, 1, "C", fill=True)
 
     for field, value in fields.items():
+        pdf.cell(90, 10, field, 1)
         if isinstance(value, list):
-            pdf.cell(200, 10, txt=f"{field}: {', '.join(value)}", ln=True, align="L")
+            pdf.cell(100, 10, ", ".join(value), 1, 1)
         else:
-            pdf.cell(200, 10, txt=f"{field}: {value}", ln=True, align="L")
+            pdf.cell(100, 10, value, 1, 1)
 
     # Save PDF to a temporary file
     pdf_file_path = "extracted_data.pdf"
@@ -75,19 +92,28 @@ def generate_pdf(fields):
 
 # Streamlit App
 st.title("Slip Data Extraction and PDF Generator")
-st.write("Upload a slip to extract detailed fields and generate a downloadable PDF.")
+st.write("Upload a slip to extract fields and generate a PDF.")
 
 # Upload Slip
 uploaded_file = st.file_uploader("Upload Slip", type=["jpg", "png", "jpeg"])
+logo_path = "logo-triangle-2.png"  # Ensure this is available in the same directory
 
 if uploaded_file:
     # Display uploaded image
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Slip", use_column_width=True)
 
-    # Perform OCR
+    # Preprocess and Perform OCR
+    st.write("Preprocessing image...")
+    processed_image = preprocess_image(image)
+    st.image(processed_image, caption="Preprocessed Image", use_column_width=True)
+
     st.write("Extracting text...")
-    extracted_text = extract_text(image)
+    extracted_text = extract_text(processed_image)
+
+    # Debugging: Display the raw OCR text
+    st.subheader("Raw OCR Text")
+    st.text(extracted_text)
 
     # Extract fields
     st.write("Extracting fields...")
@@ -103,7 +129,7 @@ if uploaded_file:
 
     # Generate and Download PDF
     st.write("Generating PDF...")
-    pdf_file_path = generate_pdf(fields)
+    pdf_file_path = generate_pdf(fields, logo_path)
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
             label="Download Extracted Data as PDF",
