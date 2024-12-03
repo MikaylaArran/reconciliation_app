@@ -2,34 +2,37 @@ import streamlit as st
 import pytesseract
 from PIL import Image
 import pandas as pd
-import re
-from fpdf import FPDF  # Library for generating PDFs
+import joblib  # For loading the trained ML model
+from fpdf import FPDF
 
 # Configure Tesseract executable path
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"  # Update this if needed
+
+# Load pre-trained field extraction model
 try:
-    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+    field_extraction_model = joblib.load("field_extraction_model.pkl")  # Placeholder for your trained model
 except FileNotFoundError:
-    st.error("Tesseract OCR is not installed. Please install it and ensure the path is configured correctly.")
-    st.stop()
+    field_extraction_model = None
+    st.warning("Field extraction model not found. Default patterns will be used.")
 
 # OCR Function
 def extract_text(image):
-    try:
-        return pytesseract.image_to_string(image)
-    except Exception as e:
-        st.error(f"Error during OCR: {e}")
-        return ""
+    return pytesseract.image_to_string(image)
 
-# Field Extraction Function
+# Dynamic Field Extraction Function
 def extract_fields(text):
-    patterns = {
-        "Date": r'\b(?:\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2})\b',
-        "Invoice Number": r'\bInvoice[:\s]?\d+\b',
-        "Total Amount": r'\b(?:\$|R)?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b'
-    }
-    extracted = {key: re.search(pattern, text).group(0) if re.search(pattern, text) else "Not Found"
-                 for key, pattern in patterns.items()}
-    return extracted
+    if field_extraction_model:
+        # Use the ML model to predict fields dynamically
+        predictions = field_extraction_model.predict([text])
+        fields = predictions[0]  # Assume the model outputs a dictionary of fields
+    else:
+        # Default field extraction using regex as a fallback
+        fields = {
+            "Date": re.search(r'\b(?:\d{2}/\d{2}/\d{4})\b', text).group(0) if re.search(r'\b(?:\d{2}/\d{2}/\d{4})\b', text) else "Not Found",
+            "Total": re.search(r'TOTAL.*?(\d+\.\d+)', text).group(1) if re.search(r'TOTAL.*?(\d+\.\d+)', text) else "Not Found",
+            "VAT Amount": re.search(r'VAT.*?(\d+\.\d+)', text).group(1) if re.search(r'VAT.*?(\d+\.\d+)', text) else "Not Found",
+        }
+    return fields
 
 # PDF Generation Function
 def generate_pdf(fields):
@@ -47,33 +50,48 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Document Processing with PDF Output")
-st.write("Upload a document to extract fields and generate a downloadable PDF.")
+st.title("AI-Powered Slip Processing with Learning")
+st.write("Upload a slip to extract fields and generate a PDF. Provide corrections to improve accuracy over time.")
 
-# Upload Document
-uploaded_file = st.file_uploader("Upload Document", type=["jpg", "png", "jpeg", "pdf"])
+# Upload Slip
+uploaded_file = st.file_uploader("Upload Slip", type=["jpg", "png", "jpeg"])
 
 if uploaded_file:
+    # Display uploaded image
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Document", use_column_width=True)
+    st.image(image, caption="Uploaded Slip", use_column_width=True)
 
-    # OCR Processing
+    # Perform OCR
     st.write("Extracting text...")
     extracted_text = extract_text(image)
 
-    # Extract Fields
+    # Extract fields
     st.write("Extracting fields...")
     fields = extract_fields(extracted_text)
+
+    # Display extracted fields
     st.subheader("Extracted Fields")
+    user_feedback = {}
     for field, value in fields.items():
-        st.write(f"**{field}:** {value}")
+        user_feedback[field] = st.text_input(f"**{field}:**", value)
 
     # Generate and Download PDF
-    pdf_file_path = generate_pdf(fields)
-    with open(pdf_file_path, "rb") as pdf_file:
-        st.download_button(
-            label="Download Extracted Data as PDF",
-            data=pdf_file,
-            file_name="extracted_data.pdf",
-            mime="application/pdf",
-        )
+    if st.button("Generate PDF"):
+        st.write("Generating PDF...")
+        pdf_file_path = generate_pdf(user_feedback)
+        with open(pdf_file_path, "rb") as pdf_file:
+            st.download_button(
+                label="Download Extracted Data as PDF",
+                data=pdf_file,
+                file_name="extracted_data.pdf",
+                mime="application/pdf",
+            )
+
+    # Save Feedback for Learning
+    if st.button("Submit Feedback"):
+        feedback_data = {"text": extracted_text, "fields": user_feedback}
+        with open("feedback.csv", "a") as f:
+            f.write(f"{feedback_data}\n")
+        st.success("Feedback submitted. This will help improve the model!")
+else:
+    st.write("Please upload a slip to extract information.")
