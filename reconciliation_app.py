@@ -10,7 +10,7 @@ pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
 # OCR Function
 def extract_text(image):
     try:
-        custom_config = r'--oem 3 --psm 6'  # Default OCR Engine and Block of Text
+        custom_config = r'--oem 3 --psm 6'
         return pytesseract.image_to_string(image, config=custom_config)
     except Exception as e:
         st.error(f"Error during OCR: {e}")
@@ -19,7 +19,7 @@ def extract_text(image):
 # Preprocess Image
 def preprocess_image(image):
     try:
-        # Ensure image is RGB and resize for better OCR
+        # Convert to RGB and resize for better OCR
         image = image.convert("RGB")
         base_width = 1000
         w_percent = base_width / float(image.size[0])
@@ -139,4 +139,6 @@ if uploaded_file:
     st.write("Generating PDF...")
     pdf_file_path = generate_pdf(fields)
     with open(pdf_file_path, "rb") as pdf_file:
-        st.download_button("Download Extracted Data as PDF", pdf_file, "extracted
+        st.download_button("Download Extracted Data as PDF", pdf_file, file_name="extracted_data.pdf", mime="application/pdf")
+else:
+    st.write("Please upload a document.")
