@@ -3,6 +3,7 @@ import pytesseract
 from PIL import Image, ImageOps
 import re
 from fpdf import FPDF
+import os
 
 # Configure Tesseract executable path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
@@ -63,8 +64,13 @@ def generate_pdf(fields, logo_path=None):
 
     # Add Logo (only if the path exists)
     if logo_path and os.path.exists(logo_path):
-        pdf.image(logo_path, x=10, y=8, w=30)
-        pdf.ln(20)  # Add spacing below the logo
+        try:
+            pdf.image(logo_path, x=10, y=8, w=30)
+            pdf.ln(20)  # Add spacing below the logo
+        except Exception as e:
+            st.warning(f"Error adding logo to PDF: {e}")
+    else:
+        st.warning("Logo not found. Proceeding without it.")
 
     # Title
     pdf.set_font("Arial", style="B", size=16)
