@@ -57,12 +57,12 @@ def extract_fields(text):
     return fields
 
 # PDF Generation Function
-def generate_pdf(fields, logo_path):
+def generate_pdf(fields, logo_path=None):
     pdf = FPDF()
     pdf.add_page()
 
-    # Add Logo
-    if os.path.exists(logo_path):
+    # Add Logo (only if the path exists)
+    if logo_path and os.path.exists(logo_path):
         pdf.image(logo_path, x=10, y=8, w=30)
         pdf.ln(20)  # Add spacing below the logo
 
@@ -96,7 +96,7 @@ st.write("Upload any document to extract fields and generate a PDF.")
 
 # Upload Document
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
-logo_path = "logo.png"  # Path to your logo file
+logo_path = "logo.png"  # Ensure your logo file exists in the same directory
 
 if uploaded_file:
     # Display uploaded image
