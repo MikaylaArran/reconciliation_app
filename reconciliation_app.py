@@ -6,43 +6,27 @@ import re
 import joblib  # Corrected import for joblib
 
 # Configure Tesseract executable path
-pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
-
-# Load pre-trained AI models (placeholder paths for now)
-# Replace these paths with your actual model files if available
 try:
-    field_extraction_model = joblib.load("field_extraction_model.pkl")
-    document_classifier_model = joblib.load("document_classifier_model.pkl")
+    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"  # Common path for Tesseract on Linux
 except FileNotFoundError:
-    field_extraction_model = None
-    document_classifier_model = None
+    st.error("Tesseract OCR is not installed. Please install it and ensure the path is configured correctly.")
+    st.stop()
 
 # OCR Function
 def extract_text(image):
-    return pytesseract.image_to_string(image)
+    try:
+        return pytesseract.image_to_string(image)
+    except Exception as e:
+        st.error(f"Error during OCR: {e}")
+        return ""
 
-# AI-Powered Field Extraction
+# AI-Powered Field Extraction (Placeholder for your AI models)
 def ai_extract_fields(text):
-    if field_extraction_model:
-        input_data = [text]  # Adjust preprocessing based on your model's requirements
-        predictions = field_extraction_model.predict(input_data)
-        fields = {
-            "Date": predictions[0][0],  # Adjust indices based on model output
-            "Invoice Number": predictions[0][1],
-            "Total Amount": predictions[0][2]
-        }
-        return fields
-    else:
-        return {"Date": "AI Model Not Loaded", "Invoice Number": "AI Model Not Loaded", "Total Amount": "AI Model Not Loaded"}
+    return {"Date": "AI Model Placeholder", "Invoice Number": "AI Model Placeholder", "Total Amount": "AI Model Placeholder"}
 
-# Document Classification
+# Document Classification (Placeholder for your AI models)
 def classify_document(text):
-    if document_classifier_model:
-        input_data = [text]  # Adjust preprocessing as needed
-        document_type = document_classifier_model.predict(input_data)[0]
-        return document_type
-    else:
-        return "AI Model Not Loaded"
+    return "Document Classification Placeholder"
 
 # Reconciliation Function
 def reconcile_data(slip_text, bank_statement_text):
