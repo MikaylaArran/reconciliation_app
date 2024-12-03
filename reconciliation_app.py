@@ -3,6 +3,7 @@ import pytesseract
 from PIL import Image, ImageOps
 import re
 from fpdf import FPDF
+import os
 
 # Configure Tesseract executable path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
@@ -10,17 +11,24 @@ pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
 # OCR Function
 def extract_text(image):
     try:
-        return pytesseract.image_to_string(image)
+        # Use a custom Tesseract configuration for better accuracy
+        custom_config = r'--oem 3 --psm 6'  # Default OCR Engine and Assume Block of Text
+        return pytesseract.image_to_string(image, config=custom_config)
     except Exception as e:
         st.error(f"Error during OCR: {e}")
         return ""
 
 # Preprocess Image
 def preprocess_image(image):
+    # Resize image for better OCR accuracy
+    resized_image = image.resize((image.width * 2, image.height * 2), Image.ANTIALIAS)
+
     # Convert to grayscale
-    grayscale_image = ImageOps.grayscale(image)
+    grayscale_image = ImageOps.grayscale(resized_image)
+
     # Apply thresholding (binarization)
     binary_image = grayscale_image.point(lambda x: 0 if x < 128 else 255, '1')
+
     return binary_image
 
 # Field Extraction Function
@@ -28,53 +36,59 @@ def extract_fields(text):
     fields = {}
     try:
         # Store Information
-        fields["Store Name"] = re.search(r'Woolworths', text).group(0) if re.search(r'Woolworths', text) else "Not Found"
-        fields["Branch"] = re.search(r'Honeycrest Randpark', text).group(0) if re.search(r'Honeycrest Randpark', text) else "Not Found"
-        fields["Address"] = re.search(r'Honeycrest Village,.*?\n', text).group(0).strip() if re.search(r'Honeycrest Village,.*?\n', text) else "Not Found"
-        
+        fields["Store/Institution Name"] = re.search(r'(Woolworths|Checkers|Pick n Pay|Spar|Shoprite|FNB|Capitec|Nedbank|Absa|Standard Bank)', text, re.IGNORECASE).group(0) if re.search(r'(Woolworths|Checkers|Pick n Pay|Spar|Shoprite|FNB|Capitec|Nedbank|Absa|Standard Bank)', text, re.IGNORECASE) else "Not Found"
+        fields["Branch/Location"] = re.search(r'(Branch|Location|Branch Name):?\s*(.*)', text).group(2).strip() if re.search(r'(Branch|Location|Branch Name):?\s*(.*)', text) else "Not Found"
+
         # Transaction Details
-        fields["Date"] = re.search(r'\d{2}/\d{2}/\d{4}', text).group(0) if re.search(r'\d{2}/\d{2}/\d{4}', text) else "Not Found"
-        fields["Time"] = re.search(r'\d{2}:\d{2}:\d{2}', text).group(0) if re.search(r'\d{2}:\d{2}:\d{2}', text) else "Not Found"
-        fields["Transaction Number"] = re.search(r'Trans\sNo\s(\d+)', text).group(1) if re.search(r'Trans\sNo\s(\d+)', text) else "Not Found"
-        
-        # Itemized Purchases
-        items = re.findall(r'(S RS.*?\d+\.\d+)', text)
-        fields["Items"] = items if items else ["Not Found"]
-        fields["Total"] = re.search(r'TOTAL.*?(\d+\.\d+)', text).group(1) if re.search(r'TOTAL.*?(\d+\.\d+)', text) else "Not Found"
-        
-        # Payment Method
-        fields["Payment Type"] = re.search(r'Card Mastercard', text).group(0) if re.search(r'Card Mastercard', text) else "Not Found"
-        fields["Account Number"] = re.search(r'Account Number.*?(\*\*\*\*\s\d+)', text).group(1) if re.search(r'Account Number.*?(\*\*\*\*\s\d+)', text) else "Not Found"
-        
-        # VAT Summary
-        fields["Gross"] = re.search(r'Gross.*?(\d+\.\d+)', text).group(1) if re.search(r'Gross.*?(\d+\.\d+)', text) else "Not Found"
-        fields["VAT Amount"] = re.search(r'VAT.*?(\d+\.\d+)', text).group(1) if re.search(r'VAT.*?(\d+\.\d+)', text) else "Not Found"
-        fields["Net"] = re.search(r'Net.*?(\d+\.\d+)', text).group(1) if re.search(r'Net.*?(\d+\.\d+)', text) else "Not Found"
-        
-        # Return Policy
-        fields["Refund Deadline"] = re.search(r'LAST DAY FOR FULL REFUND IS\s(\d{2}/\d{2}/\d{4})', text).group(1) if re.search(r'LAST DAY FOR FULL REFUND IS\s(\d{2}/\d{2}/\d{4})', text) else "Not Found"
-        
+        fields["Date"] = re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text).group(0) if re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text) else "Not Found"
+        fields["Time"] = re.search(r'\b\d{2}:\d{2}(:\d{2})?\b', text).group(0) if re.search(r'\b\d{2}:\d{2}(:\d{2})?\b', text) else "Not Found"
+        fields["Transaction/Reference Number"] = re.search(r'(Transaction|Reference|Trans|Invoice) No.*?(\d+)', text).group(2) if re.search(r'(Transaction|Reference|Trans|Invoice) No.*?(\d+)', text) else "Not Found"
+
+        # Account or Bank Statement Info
+        fields["Account Number"] = re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text).group(1) if re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text) else "Not Found"
+        fields["Transaction Amount"] = re.search(r'(Amount|Total|Balance|Debit|Credit).*?(\d+\.\d{2})', text, re.IGNORECASE).group(2) if re.search(r'(Amount|Total|Balance|Debit|Credit).*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
+
+        # Itemized Purchases or Transactions
+        items = re.findall(r'(\w+\s+\w+.*?\d+\.\d{2})', text)  # Matches item names and amounts
+        fields["Items/Transactions"] = items if items else ["Not Found"]
+
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
-    
+
     return fields
 
+# Document Classifier
+def classify_document(text):
+    if "bank" in text.lower() or "account" in text.lower():
+        return "Bank Statement"
+    elif "VAT" in text or "TOTAL" in text:
+        return "Slip/Receipt"
+    elif "Invoice" in text or "Bill" in text:
+        return "Invoice"
+    else:
+        return "Unknown Document"
+
 # PDF Generation Function
-def generate_pdf(fields, logo_path):
+def generate_pdf(fields, logo_path=None):
     pdf = FPDF()
     pdf.add_page()
-    
-    # Add Logo
-    pdf.image(logo_path, x=10, y=8, w=30)  # Adjust as needed for position/size
-    
+
+    # Add Logo if Available
+    if logo_path and os.path.exists(logo_path):
+        try:
+            pdf.image(logo_path, x=10, y=8, w=30)
+            pdf.ln(20)  # Add spacing below the logo
+        except Exception:
+            st.warning("Error loading logo. Proceeding without it.")
+
     # Title
     pdf.set_font("Arial", style="B", size=16)
-    pdf.cell(0, 10, "Extracted Slip Data", ln=True, align="C")
-    pdf.ln(10)  # Add some vertical spacing
+    pdf.cell(0, 10, "Extracted Document Data", ln=True, align="C")
+    pdf.ln(10)
 
     # Add Fields in Table Format
     pdf.set_font("Arial", size=12)
-    pdf.set_fill_color(200, 220, 255)  # Light blue for table header background
+    pdf.set_fill_color(200, 220, 255)
     pdf.cell(90, 10, "Field", 1, 0, "C", fill=True)
     pdf.cell(100, 10, "Value", 1, 1, "C", fill=True)
 
@@ -85,23 +99,23 @@ def generate_pdf(fields, logo_path):
         else:
             pdf.cell(100, 10, value, 1, 1)
 
-    # Save PDF to a temporary file
     pdf_file_path = "extracted_data.pdf"
     pdf.output(pdf_file_path)
     return pdf_file_path
 
 # Streamlit App
-st.title("Slip Data Extraction and PDF Generator")
-st.write("Upload a slip to extract fields and generate a PDF.")
+st.title("Universal Document Processor")
+st.write("Upload any document to extract fields and generate a PDF.")
 
-# Upload Slip
-uploaded_file = st.file_uploader("Upload Slip", type=["jpg", "png", "jpeg"])
-logo_path = "logo-triangle-2.png"  # Ensure this is available in the same directory
+# Upload Document
+uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
+logo_file = st.file_uploader("Upload Logo (optional, PNG only)", type=["png"])
+logo_path = logo_file.name if logo_file else None
 
 if uploaded_file:
     # Display uploaded image
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Slip", use_column_width=True)
+    st.image(image, caption="Uploaded Document", use_column_width=True)
 
     # Preprocess and Perform OCR
     st.write("Preprocessing image...")
@@ -114,6 +128,10 @@ if uploaded_file:
     # Debugging: Display the raw OCR text
     st.subheader("Raw OCR Text")
     st.text(extracted_text)
+
+    # Classify Document
+    doc_type = classify_document(extracted_text)
+    st.subheader(f"Document Type: {doc_type}")
 
     # Extract fields
     st.write("Extracting fields...")
@@ -138,4 +156,4 @@ if uploaded_file:
             mime="application/pdf",
         )
 else:
-    st.write("Please upload a slip to extract information.")
+    st.write("Please upload a document.")
