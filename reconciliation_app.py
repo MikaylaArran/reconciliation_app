@@ -3,14 +3,19 @@ import pytesseract
 from PIL import Image
 import pandas as pd
 import re
-from sklearn.externals import joblib  # For loading AI models (e.g., trained classifiers)
+import joblib  # Corrected import for joblib
 
 # Configure Tesseract executable path
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
-# Load pre-trained AI models (replace with your trained model paths)
-field_extraction_model = joblib.load("field_extraction_model.pkl")  # Placeholder
-document_classifier_model = joblib.load("document_classifier_model.pkl")  # Placeholder
+# Load pre-trained AI models (placeholder paths for now)
+# Replace these paths with your actual model files if available
+try:
+    field_extraction_model = joblib.load("field_extraction_model.pkl")
+    document_classifier_model = joblib.load("document_classifier_model.pkl")
+except FileNotFoundError:
+    field_extraction_model = None
+    document_classifier_model = None
 
 # OCR Function
 def extract_text(image):
@@ -18,21 +23,26 @@ def extract_text(image):
 
 # AI-Powered Field Extraction
 def ai_extract_fields(text):
-    # Preprocess the text for the model
-    input_data = [text]  # Adjust preprocessing based on your model's requirements
-    predictions = field_extraction_model.predict(input_data)
-    fields = {
-        "Date": predictions[0][0],  # Adjust indices based on model output
-        "Invoice Number": predictions[0][1],
-        "Total Amount": predictions[0][2]
-    }
-    return fields
+    if field_extraction_model:
+        input_data = [text]  # Adjust preprocessing based on your model's requirements
+        predictions = field_extraction_model.predict(input_data)
+        fields = {
+            "Date": predictions[0][0],  # Adjust indices based on model output
+            "Invoice Number": predictions[0][1],
+            "Total Amount": predictions[0][2]
+        }
+        return fields
+    else:
+        return {"Date": "AI Model Not Loaded", "Invoice Number": "AI Model Not Loaded", "Total Amount": "AI Model Not Loaded"}
 
 # Document Classification
 def classify_document(text):
-    input_data = [text]  # Adjust preprocessing as needed
-    document_type = document_classifier_model.predict(input_data)[0]
-    return document_type
+    if document_classifier_model:
+        input_data = [text]  # Adjust preprocessing as needed
+        document_type = document_classifier_model.predict(input_data)[0]
+        return document_type
+    else:
+        return "AI Model Not Loaded"
 
 # Reconciliation Function
 def reconcile_data(slip_text, bank_statement_text):
