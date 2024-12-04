@@ -2,22 +2,45 @@ import streamlit as st
 import pytesseract
 from PIL import Image, ImageOps
 from pdf2image import convert_from_path
-import pandas as pd
 import re
 from fpdf import FPDF
 
 # Configure Tesseract executable path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Ensure Tesseract is installed and accessible
 
-# Preload the account data from the attached Excel file
-def load_account_data():
-    """Load account data from a predefined Excel file."""
-    try:
-        account_data = pd.read_excel("account_data.xlsx")  # Replace with your file name
-        return account_data
-    except Exception as e:
-        st.error(f"Error loading account data: {e}")
-        return None
+# Predefined account details
+ACCOUNT_DETAILS = [
+    {"Acc No": "180201", "Acc Description": "Debtors Suspense - Personal expenses made to be refunded to company"},
+    {"Acc No": "527001", "Acc Description": "WELFARE - For office expenses like coffee or gifts, team building, etc."},
+    {"Acc No": "600001", "Acc Description": "HOTEL MEALS FOREIGN - Hotel and meals for all overseas travel"},
+    {"Acc No": "601001", "Acc Description": "OVERSEAS TRAVEL - Flights and transfers"},
+    {"Acc No": "602001", "Acc Description": "HOTELS MEALS LOCAL - Local hotel and meal allowances while traveling"},
+    {"Acc No": "603001", "Acc Description": "TRAVEL LOCAL - Flights, car hire, Uber, etc."},
+    {"Acc No": "604001", "Acc Description": "LOCAL ENTERTAINMENT - Client meetings"},
+    {"Acc No": "605001", "Acc Description": "CONFERENCES"},
+    {"Acc No": "650001", "Acc Description": "ASSETS LESS THAN R3000"},
+    {"Acc No": "750241", "Acc Description": "PRINTING"},
+    {"Acc No": "750035", "Acc Description": "GENERAL AIRFREIGHT"},
+    {"Acc No": "700035", "Acc Description": "GENERAL POSTAGE"},
+    {"Acc No": "700031", "Acc Description": "POSTAGES"},
+    {"Acc No": "750491", "Acc Description": "SCHEME PRINTING"},
+    {"Acc No": "750194", "Acc Description": "MEMBERSHIP FEES"},
+    {"Acc No": "750211", "Acc Description": "PHOTOCOPYING"},
+    {"Acc No": "750531", "Acc Description": "STATIONERY"},
+    {"Acc No": "750541", "Acc Description": "SUBSCRIPTIONS"},
+    {"Acc No": "750005", "Acc Description": "BRANDING COSTS - Branding for corporate gifts ONLY"},
+    {"Acc No": "750182", "Acc Description": "PROMOTIONAL ITEMS - Corporate gifts ONLY"},
+    {"Acc No": "800091", "Acc Description": "OUT OF SCOPE EXPENSES"},
+    {"Acc No": "800141", "Acc Description": "SOFTWARE LICENSES"},
+    {"Acc No": "803061", "Acc Description": "PRINTER CONSUMABLES"},
+    {"Acc No": "756001", "Acc Description": "CONSULTANCY FEES"},
+    {"Acc No": "750031", "Acc Description": "BANK CHARGES - Always for cost of card holder"},
+    {"Acc No": "790001", "Acc Description": "INTEREST PAID - OTHER"},
+    {"Acc No": "790002", "Acc Description": "INTEREST PAID - BANK"},
+    {"Acc No": "470001", "Acc Description": "INTEREST RECEIVED BANK BALANCE"},
+    {"Acc No": "470101", "Acc Description": "INTEREST RECEIVED OTHER"},
+    {"Acc No": "273111", "Acc Description": "VAT Input - Manual journals"},
+]
 
 def preprocess_image(image):
     """Preprocess the uploaded image for OCR."""
@@ -65,10 +88,6 @@ def extract_fields_document(text):
         vat_match = re.search(r"(VAT|Vat|vat)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
         fields["VAT"] = vat_match.group(2) if vat_match else "Not Found"
 
-        # Extract Taxable Value
-        taxable_match = re.search(r"(TAXABLE VAL|Taxable Val|Taxable)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        fields["Taxable Value"] = taxable_match.group(2) if taxable_match else "Not Found"
-
         # Extract Date (common date formats)
         date_match = re.search(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", text)
         fields["Date"] = date_match.group(1) if date_match else "Not Found"
@@ -98,7 +117,6 @@ def generate_pdf(fields):
     pdf.cell(100, 10, "Value", 1, 1, "C", fill=True)
 
     for field, value in fields.items():
-        # Ensure all values are converted to ASCII-friendly strings
         safe_value = str(value).encode('ascii', 'ignore').decode('ascii')
         pdf.cell(90, 10, field, 1)
         pdf.cell(100, 10, safe_value, 1, 1)
@@ -123,23 +141,15 @@ def process_pdf(uploaded_pdf):
         return ""
 
 # Streamlit App
-st.title("Dynamic Document Processor")
+st.title("Dynamic Document Processor with Account Dropdown")
 st.write("Upload a document (image or PDF) to extract key details and generate a PDF.")
 
-# Load account data
-account_data = load_account_data()
-if account_data is not None:
-    st.write("Select an account:")
-    account_column = st.selectbox("Choose Account Number Column", account_data.columns)
-    description_column = st.selectbox("Choose Account Description Column", account_data.columns)
-
-    selected_account = st.selectbox(
-        "Available Accounts",
-        account_data[[account_column, description_column]].apply(
-            lambda x: f"{x[account_column]} - {x[description_column]}", axis=1
-        ),
-    )
-    st.write(f"Selected Account: {selected_account}")
+# Account Dropdown
+selected_account = st.selectbox(
+    "Select an Account",
+    [f"{acc['Acc No']} - {acc['Acc Description']}" for acc in ACCOUNT_DETAILS],
+)
+st.write(f"Selected Account: {selected_account}")
 
 # File Upload
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
@@ -162,6 +172,7 @@ if uploaded_file:
     fields = extract_fields_document(extracted_text)
 
     st.subheader("Extracted Fields")
+    for st.subheader("Extracted Fields")
     for field, value in fields.items():
         st.write(f"**{field}:** {value}")
 
@@ -176,3 +187,4 @@ if uploaded_file:
         )
 else:
     st.write("Please upload a document.")
+
