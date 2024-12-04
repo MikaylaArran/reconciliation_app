@@ -34,16 +34,12 @@ def extract_text(image):
         return ""
 
 def extract_fields_sa_receipt(text):
-    """Extract key fields from South African receipts without items."""
+    """Extract key fields from South African receipts dynamically."""
     fields = {}
     try:
-        # Extract Store Name
-        store_match = re.search(
-            r"(Pick n Pay|Woolworths|Checkers|Spar|Shoprite|Clicks|Dis-Chem)",
-            text,
-            re.IGNORECASE,
-        )
-        fields["Store Name"] = store_match.group(0) if store_match else "Unknown Store"
+        # Extract Store Name (dynamically based on the first few lines of the text)
+        text_lines = text.strip().split("\n")
+        fields["Store Name"] = text_lines[0] if len(text_lines) > 0 else "Unknown Store"
 
         # Extract Total Amount
         total_match = re.search(r"(TOTAL|DUE VAT INCL)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
@@ -101,7 +97,7 @@ def process_pdf(uploaded_pdf):
         return ""
 
 # Streamlit App
-st.title("South African Receipt Processor (Excluding Items)")
+st.title("South African Receipt Processor (Dynamic Store Name)")
 st.write("Upload a South African receipt (image or PDF) to extract key details and generate a PDF.")
 
 # File Upload
