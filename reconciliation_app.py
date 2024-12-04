@@ -12,7 +12,16 @@ pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Ensure Tesseract is instal
 ACCOUNT_DETAILS = [
     {"Acc No": "180201", "Acc Description": "Debtors Suspense - Personal expenses made to be refunded to company"},
     {"Acc No": "527001", "Acc Description": "WELFARE - For office expenses like coffee or gifts, team building, etc."},
-    # Add remaining account details here...
+    {"Acc No": "600001", "Acc Description": "HOTEL MEALS FOREIGN - Hotel and meals for all overseas travel"},
+    {"Acc No": "601001", "Acc Description": "OVERSEAS TRAVEL - Flights and transfers"},
+    {"Acc No": "602001", "Acc Description": "HOTELS MEALS LOCAL - Local hotel and meal allowances while traveling"},
+    {"Acc No": "603001", "Acc Description": "TRAVEL LOCAL - Flights, car hire, Uber, etc."},
+    {"Acc No": "604001", "Acc Description": "LOCAL ENTERTAINMENT - Client meetings"},
+    {"Acc No": "605001", "Acc Description": "CONFERENCES"},
+    {"Acc No": "750035", "Acc Description": "GENERAL AIRFREIGHT"},
+    {"Acc No": "700035", "Acc Description": "GENERAL POSTAGE"},
+    {"Acc No": "273111", "Acc Description": "VAT Input - Manual journals"},
+    # Add more accounts as needed
 ]
 
 def preprocess_image(image):
@@ -40,37 +49,6 @@ def extract_text(image):
         st.error(f"Error during OCR: {e}")
         return ""
 
-def extract_vat_details(text):
-    """Extract VAT and related values from text."""
-    vat_details = {"Taxable VAT": "Not Found", "VAT Value": "Not Found", "VAT": "Not Found"}
-    try:
-        # Split text into lines for heading-based analysis
-        lines = text.split("\n")
-
-        for i, line in enumerate(lines):
-            # Look for VAT-related headings
-            if re.search(r"(VAT|Taxable VAT|VAT Value|Tax)", line, re.IGNORECASE):
-                # Check the next line or same line for amounts
-                vat_match = re.search(r"([\d,]+\.\d{2})", line)
-                next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1]) if i + 1 < len(lines) else None
-
-                # Extract Taxable VAT, VAT Value, or general VAT based on context
-                if "Taxable VAT" in line or "Taxable" in line:
-                    vat_details["Taxable VAT"] = vat_match.group(1) if vat_match else (
-                        next_line_match.group(1) if next_line_match else "Not Found"
-                    )
-                elif "VAT Value" in line or "Value Added Tax" in line:
-                    vat_details["VAT Value"] = vat_match.group(1) if vat_match else (
-                        next_line_match.group(1) if next_line_match else "Not Found"
-                    )
-                else:
-                    vat_details["VAT"] = vat_match.group(1) if vat_match else (
-                        next_line_match.group(1) if next_line_match else "Not Found"
-                    )
-    except Exception as e:
-        st.error(f"Error extracting VAT details: {e}")
-    return vat_details
-
 def extract_fields_document(text):
     """Extract key fields from documents dynamically."""
     fields = {}
@@ -93,8 +71,28 @@ def extract_fields_document(text):
         subtotal = float(subtotal_match.group(2).replace(",", "")) if subtotal_match else None
         fields["Subtotal"] = f"{subtotal:.2f}" if subtotal else "Not Found"
 
-        # Extract VAT details (Taxable VAT, VAT Value, and VAT)
-        vat_details = extract_vat_details(text)
+        # Extract VAT details from headings
+        vat_details = {"Taxable Value": "Not Found", "VAT Value": "Not Found", "Total VAT": "Not Found"}
+        lines = text.split("\n")
+
+        for i, line in enumerate(lines):
+            if re.search(r"(Taxable Val|VAT Val|VAT|TAX)", line, re.IGNORECASE):
+                # Check for amounts under or next to headings
+                taxable_match = re.search(r"Taxable Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                vat_value_match = re.search(r"VAT Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                general_vat_match = re.search(r"VAT.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1]) if i + 1 < len(lines) else None
+
+                # Populate VAT details
+                if taxable_match:
+                    vat_details["Taxable Value"] = taxable_match.group(1)
+                elif vat_value_match:
+                    vat_details["VAT Value"] = vat_value_match.group(1)
+                elif general_vat_match:
+                    vat_details["Total VAT"] = general_vat_match.group(1)
+                elif next_line_match:
+                    vat_details["Total VAT"] = next_line_match.group(1)
+
         fields.update(vat_details)
 
         # Extract Date (common date formats)
@@ -135,7 +133,7 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Dynamic Document Processor with VAT Heading Detection")
+st.title("Dynamic Document Processor with VAT Enhancements")
 
 # Account Dropdown
 selected_account = st.selectbox(
