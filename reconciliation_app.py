@@ -142,6 +142,4 @@ if uploaded_file:
             mime="application/pdf",
         )
 else:
-    st.write
-::contentReference[oaicite:0]{index=0}
- 
+    st.write("Please upload a document.")
