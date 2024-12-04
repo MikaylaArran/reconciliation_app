@@ -1,7 +1,6 @@
 import streamlit as st
 import pytesseract
 from PIL import Image, ImageOps
-from pdf2image import convert_from_path
 import re
 from fpdf import FPDF
 
@@ -12,16 +11,18 @@ pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
 ACCOUNT_DETAILS = [
     {"Acc No": "180201", "Acc Description": "Debtors Suspense - Personal expenses made to be refunded to company"},
     {"Acc No": "527001", "Acc Description": "WELFARE - For office expenses like coffee or gifts, team building, etc."},
-    {"Acc No": "600001", "Acc Description": "HOTEL MEALS FOREIGN - Hotel and meals for all overseas travel"},
-    {"Acc No": "601001", "Acc Description": "OVERSEAS TRAVEL - Flights and transfers"},
-    {"Acc No": "602001", "Acc Description": "HOTELS MEALS LOCAL - Local hotel and meal allowances while traveling"},
-    {"Acc No": "603001", "Acc Description": "TRAVEL LOCAL - Flights, car hire, Uber, etc."},
-    {"Acc No": "604001", "Acc Description": "LOCAL ENTERTAINMENT - Client meetings"},
-    {"Acc No": "605001", "Acc Description": "CONFERENCES"},
-    {"Acc No": "750035", "Acc Description": "GENERAL AIRFREIGHT"},
-    {"Acc No": "700035", "Acc Description": "GENERAL POSTAGE"},
-    {"Acc No": "273111", "Acc Description": "VAT Input - Manual journals"},
+    # Add more accounts as needed...
 ]
+
+# Synonyms for common fields to handle different terminologies
+FIELD_SYNONYMS = {
+    "subtotal": ["sub total", "net amount", "amount"],
+    "total": ["total", "amount due", "balance due"],
+    "taxable_value": ["taxable val", "taxable amount", "taxable"],
+    "vat": ["vat", "tax", "vat amount"],
+    "date": ["date", "transaction date", "invoice date"],
+    "time": ["time", "transaction time"]
+}
 
 def preprocess_image(image):
     """Preprocess the uploaded image for OCR."""
@@ -48,70 +49,36 @@ def extract_text(image):
         st.error(f"Error during OCR: {e}")
         return ""
 
-def extract_vat_details(text):
-    """Extract VAT-related values from the text."""
-    vat_details = {"Taxable Value": "Not Found", "VAT Value": "Not Found", "Total VAT": "Not Found"}
-    try:
-        lines = text.split("\n")
-        for i, line in enumerate(lines):
-            # Look for key VAT-related phrases and extract adjacent values
-            if re.search(r"(Taxable Val|VAT Val|VAT|TAX)", line, re.IGNORECASE):
-                taxable_match = re.search(r"Taxable Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-                vat_value_match = re.search(r"VAT Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-                general_vat_match = re.search(r"(VAT|Tax).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-
-                # Look at the next line for amounts if current line doesn't contain values
-                next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1]) if i + 1 < len(lines) else None
-
-                if taxable_match:
-                    vat_details["Taxable Value"] = taxable_match.group(1)
-                if vat_value_match:
-                    vat_details["VAT Value"] = vat_value_match.group(1)
-                if general_vat_match:
-                    vat_details["Total VAT"] = general_vat_match.group(2)
-                elif next_line_match:
-                    vat_details["Total VAT"] = next_line_match.group(1)
-
-    except Exception as e:
-        st.error(f"Error extracting VAT details: {e}")
-    return vat_details
+def find_value_after_label(lines, label_patterns):
+    """Find the value that appears after a given label in the text lines."""
+    for i, line in enumerate(lines):
+        for pattern in label_patterns:
+            if re.search(pattern, line, re.IGNORECASE):
+                # Check the same line for a value
+                value_match = re.search(r"([\d,]+\.\d{2})", line)
+                if value_match:
+                    return value_match.group(1)
+                # Check the next line for a value
+                elif i + 1 < len(lines):
+                    next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1])
+                    if next_line_match:
+                        return next_line_match.group(1)
+    return "Not Found"
 
 def extract_fields_document(text):
     """Extract key fields from documents dynamically."""
     fields = {}
-    try:
-        # Extract Company Name (based on the first few lines of the text)
-        text_lines = text.strip().split("\n")
-        if len(text_lines) > 0:
-            fields["Company Name"] = next(
-                (line.strip() for line in text_lines[:3] if line.strip()), "Unknown Company"
-            )
-        else:
-            fields["Company Name"] = "Unknown Company"
+    lines = text.split("\n")
 
-        # Extract Total Amount
-        total_match = re.search(r"(TOTAL|DUE VAT INCL)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        fields["Total"] = total_match.group(2) if total_match else "Not Found"
+    # Extract Company Name (assumed to be in the first few lines)
+    fields["Company Name"] = next((line.strip() for line in lines[:3] if line.strip()), "Unknown Company")
 
-        # Extract Subtotal
-        subtotal_match = re.search(r"(SUBTOTAL|Subtotal)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        subtotal = float(subtotal_match.group(2).replace(",", "")) if subtotal_match else None
-        fields["Subtotal"] = f"{subtotal:.2f}" if subtotal else "Not Found"
+    # Extract fields based on synonyms
+    for field, synonyms in FIELD_SYNONYMS.items():
+        label_patterns = [re.escape(synonym) for synonym in synonyms]
+        value = find_value_after_label(lines, label_patterns)
+        fields[field.replace("_", " ").title()] = value
 
-        # Extract VAT details
-        vat_details = extract_vat_details(text)
-        fields.update(vat_details)
-
-        # Extract Date
-        date_match = re.search(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", text)
-        fields["Date"] = date_match.group(1) if date_match else "Not Found"
-
-        # Extract Time
-        time_match = re.search(r"\b([01]?[0-9]|2[0-3]):[0-5][0-9](\s?[APap][Mm])?\b", text)
-        fields["Time"] = time_match.group(0) if time_match else "Not Found"
-
-    except Exception as e:
-        st.error(f"Error extracting fields: {e}")
     return fields
 
 def generate_pdf(fields):
@@ -140,7 +107,7 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Dynamic Document Processor with Advanced VAT Handling")
+st.title("Dynamic Document Processor with Flexible Field Extraction")
 
 # Account Dropdown
 selected_account = st.selectbox(
@@ -175,5 +142,6 @@ if uploaded_file:
             mime="application/pdf",
         )
 else:
-    st.write("Please upload a document.")
-
+    st.write
+::contentReference[oaicite:0]{index=0}
+ 
