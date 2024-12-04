@@ -2,11 +2,22 @@ import streamlit as st
 import pytesseract
 from PIL import Image, ImageOps
 from pdf2image import convert_from_path
+import pandas as pd
 import re
 from fpdf import FPDF
 
 # Configure Tesseract executable path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Ensure Tesseract is installed and accessible
+
+# Preload the account data from the attached Excel file
+def load_account_data():
+    """Load account data from a predefined Excel file."""
+    try:
+        account_data = pd.read_excel("account_data.xlsx")  # Replace with your file name
+        return account_data
+    except Exception as e:
+        st.error(f"Error loading account data: {e}")
+        return None
 
 def preprocess_image(image):
     """Preprocess the uploaded image for OCR."""
@@ -33,13 +44,12 @@ def extract_text(image):
         st.error(f"Error during OCR: {e}")
         return ""
 
-def extract_fields_sa_document(text):
+def extract_fields_document(text):
     """Extract key fields from documents dynamically."""
     fields = {}
     try:
         # Extract Company Name (dynamically based on the first few lines of the text)
         text_lines = text.strip().split("\n")
-        # Assume the company name is one of the first three lines
         if len(text_lines) > 0:
             fields["Company Name"] = next(
                 (line.strip() for line in text_lines[:3] if line.strip()), "Unknown Company"
@@ -52,12 +62,20 @@ def extract_fields_sa_document(text):
         fields["Total"] = total_match.group(2) if total_match else "Not Found"
 
         # Extract VAT Amount
-        vat_match = re.search(r"VAT VAL[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        fields["VAT"] = vat_match.group(1) if vat_match else "Not Found"
+        vat_match = re.search(r"(VAT|Vat|vat)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
+        fields["VAT"] = vat_match.group(2) if vat_match else "Not Found"
 
         # Extract Taxable Value
-        taxable_match = re.search(r"TAXABLE VAL[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        fields["Taxable Value"] = taxable_match.group(1) if taxable_match else "Not Found"
+        taxable_match = re.search(r"(TAXABLE VAL|Taxable Val|Taxable)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
+        fields["Taxable Value"] = taxable_match.group(2) if taxable_match else "Not Found"
+
+        # Extract Date (common date formats)
+        date_match = re.search(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", text)
+        fields["Date"] = date_match.group(1) if date_match else "Not Found"
+
+        # Extract Time (common time formats)
+        time_match = re.search(r"\b([01]?[0-9]|2[0-3]):[0-5][0-9](\s?[APap][Mm])?\b", text)
+        fields["Time"] = time_match.group(0) if time_match else "Not Found"
 
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
@@ -105,8 +123,23 @@ def process_pdf(uploaded_pdf):
         return ""
 
 # Streamlit App
-st.title("Document Processor")
+st.title("Dynamic Document Processor")
 st.write("Upload a document (image or PDF) to extract key details and generate a PDF.")
+
+# Load account data
+account_data = load_account_data()
+if account_data is not None:
+    st.write("Select an account:")
+    account_column = st.selectbox("Choose Account Number Column", account_data.columns)
+    description_column = st.selectbox("Choose Account Description Column", account_data.columns)
+
+    selected_account = st.selectbox(
+        "Available Accounts",
+        account_data[[account_column, description_column]].apply(
+            lambda x: f"{x[account_column]} - {x[description_column]}", axis=1
+        ),
+    )
+    st.write(f"Selected Account: {selected_account}")
 
 # File Upload
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
@@ -126,7 +159,7 @@ if uploaded_file:
         extracted_text = extract_text(processed_image)
 
     st.write("Extracting fields...")
-    fields = extract_fields_sa_document(extracted_text)
+    fields = extract_fields_document(extracted_text)
 
     st.subheader("Extracted Fields")
     for field, value in fields.items():
