@@ -49,11 +49,42 @@ def extract_text(image):
         st.error(f"Error during OCR: {e}")
         return ""
 
+def extract_vat_details(text):
+    """Extract VAT-related values from the text."""
+    vat_details = {"Taxable Value": "Not Found", "VAT Value": "Not Found", "Zero-Rated VAT": "Not Found", "Total VAT": "Not Found"}
+    try:
+        lines = text.split("\n")
+        for i, line in enumerate(lines):
+            # Look for VAT-related keywords and extract nearby values
+            if re.search(r"(Taxable Val|VAT Val|Zero-Rated|VAT|TAX)", line, re.IGNORECASE):
+                # Match for amounts in the same line or next line
+                taxable_match = re.search(r"(Taxable Val|Taxable).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                vat_value_match = re.search(r"(VAT Val|Value).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                zero_rated_match = re.search(r"(Zero-Rated|Zero Rated).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                general_vat_match = re.search(r"(VAT|Tax).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1]) if i + 1 < len(lines) else None
+
+                # Populate VAT details based on matches
+                if taxable_match:
+                    vat_details["Taxable Value"] = taxable_match.group(2)
+                if vat_value_match:
+                    vat_details["VAT Value"] = vat_value_match.group(2)
+                if zero_rated_match:
+                    vat_details["Zero-Rated VAT"] = zero_rated_match.group(2)
+                if general_vat_match:
+                    vat_details["Total VAT"] = general_vat_match.group(2)
+                elif next_line_match:
+                    vat_details["Total VAT"] = next_line_match.group(1)
+
+    except Exception as e:
+        st.error(f"Error extracting VAT details: {e}")
+    return vat_details
+
 def extract_fields_document(text):
     """Extract key fields from documents dynamically."""
     fields = {}
     try:
-        # Extract Company Name (dynamically based on the first few lines of the text)
+        # Extract Company Name (based on the first few lines of the text)
         text_lines = text.strip().split("\n")
         if len(text_lines) > 0:
             fields["Company Name"] = next(
@@ -71,35 +102,15 @@ def extract_fields_document(text):
         subtotal = float(subtotal_match.group(2).replace(",", "")) if subtotal_match else None
         fields["Subtotal"] = f"{subtotal:.2f}" if subtotal else "Not Found"
 
-        # Extract VAT details from headings
-        vat_details = {"Taxable Value": "Not Found", "VAT Value": "Not Found", "Total VAT": "Not Found"}
-        lines = text.split("\n")
-
-        for i, line in enumerate(lines):
-            if re.search(r"(Taxable Val|VAT Val|VAT|TAX)", line, re.IGNORECASE):
-                # Check for amounts under or next to headings
-                taxable_match = re.search(r"Taxable Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-                vat_value_match = re.search(r"VAT Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-                general_vat_match = re.search(r"VAT.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-                next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1]) if i + 1 < len(lines) else None
-
-                # Populate VAT details
-                if taxable_match:
-                    vat_details["Taxable Value"] = taxable_match.group(1)
-                elif vat_value_match:
-                    vat_details["VAT Value"] = vat_value_match.group(1)
-                elif general_vat_match:
-                    vat_details["Total VAT"] = general_vat_match.group(1)
-                elif next_line_match:
-                    vat_details["Total VAT"] = next_line_match.group(1)
-
+        # Extract VAT details
+        vat_details = extract_vat_details(text)
         fields.update(vat_details)
 
-        # Extract Date (common date formats)
+        # Extract Date
         date_match = re.search(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", text)
         fields["Date"] = date_match.group(1) if date_match else "Not Found"
 
-        # Extract Time (common time formats)
+        # Extract Time
         time_match = re.search(r"\b([01]?[0-9]|2[0-3]):[0-5][0-9](\s?[APap][Mm])?\b", text)
         fields["Time"] = time_match.group(0) if time_match else "Not Found"
 
@@ -133,7 +144,7 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Dynamic Document Processor with VAT Enhancements")
+st.title("Dynamic Document Processor with Advanced VAT Handling")
 
 # Account Dropdown
 selected_account = st.selectbox(
@@ -158,7 +169,7 @@ if uploaded_file:
     for field, value in fields.items():
         st.write(f"**{field}:** {value}")
 
-    # Generate and download PDF
+        # Generate and download PDF
     pdf_file_path = generate_pdf(fields)
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
@@ -169,3 +180,4 @@ if uploaded_file:
         )
 else:
     st.write("Please upload a document.")
+
