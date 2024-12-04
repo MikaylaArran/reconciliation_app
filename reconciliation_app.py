@@ -6,7 +6,7 @@ import re
 from fpdf import FPDF
 
 # Configure Tesseract executable path
-pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Ensure Tesseract is installed and accessible
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
 
 # Predefined account details
 ACCOUNT_DETAILS = [
@@ -21,7 +21,6 @@ ACCOUNT_DETAILS = [
     {"Acc No": "750035", "Acc Description": "GENERAL AIRFREIGHT"},
     {"Acc No": "700035", "Acc Description": "GENERAL POSTAGE"},
     {"Acc No": "273111", "Acc Description": "VAT Input - Manual journals"},
-    # Add more accounts as needed
 ]
 
 def preprocess_image(image):
@@ -51,26 +50,23 @@ def extract_text(image):
 
 def extract_vat_details(text):
     """Extract VAT-related values from the text."""
-    vat_details = {"Taxable Value": "Not Found", "VAT Value": "Not Found", "Zero-Rated VAT": "Not Found", "Total VAT": "Not Found"}
+    vat_details = {"Taxable Value": "Not Found", "VAT Value": "Not Found", "Total VAT": "Not Found"}
     try:
         lines = text.split("\n")
         for i, line in enumerate(lines):
-            # Look for VAT-related keywords and extract nearby values
-            if re.search(r"(Taxable Val|VAT Val|Zero-Rated|VAT|TAX)", line, re.IGNORECASE):
-                # Match for amounts in the same line or next line
-                taxable_match = re.search(r"(Taxable Val|Taxable).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-                vat_value_match = re.search(r"(VAT Val|Value).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
-                zero_rated_match = re.search(r"(Zero-Rated|Zero Rated).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+            # Look for key VAT-related phrases and extract adjacent values
+            if re.search(r"(Taxable Val|VAT Val|VAT|TAX)", line, re.IGNORECASE):
+                taxable_match = re.search(r"Taxable Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+                vat_value_match = re.search(r"VAT Val.*?([\d,]+\.\d{2})", line, re.IGNORECASE)
                 general_vat_match = re.search(r"(VAT|Tax).*?([\d,]+\.\d{2})", line, re.IGNORECASE)
+
+                # Look at the next line for amounts if current line doesn't contain values
                 next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1]) if i + 1 < len(lines) else None
 
-                # Populate VAT details based on matches
                 if taxable_match:
-                    vat_details["Taxable Value"] = taxable_match.group(2)
+                    vat_details["Taxable Value"] = taxable_match.group(1)
                 if vat_value_match:
-                    vat_details["VAT Value"] = vat_value_match.group(2)
-                if zero_rated_match:
-                    vat_details["Zero-Rated VAT"] = zero_rated_match.group(2)
+                    vat_details["VAT Value"] = vat_value_match.group(1)
                 if general_vat_match:
                     vat_details["Total VAT"] = general_vat_match.group(2)
                 elif next_line_match:
@@ -169,7 +165,7 @@ if uploaded_file:
     for field, value in fields.items():
         st.write(f"**{field}:** {value}")
 
-        # Generate and download PDF
+    # Generate and download PDF
     pdf_file_path = generate_pdf(fields)
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
