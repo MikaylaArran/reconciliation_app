@@ -40,6 +40,37 @@ def extract_text(image):
         st.error(f"Error during OCR: {e}")
         return ""
 
+def extract_vat_details(text):
+    """Extract VAT and related values from text."""
+    vat_details = {"Taxable VAT": "Not Found", "VAT Value": "Not Found", "VAT": "Not Found"}
+    try:
+        # Split text into lines for heading-based analysis
+        lines = text.split("\n")
+
+        for i, line in enumerate(lines):
+            # Look for VAT-related headings
+            if re.search(r"(VAT|Taxable VAT|VAT Value|Tax)", line, re.IGNORECASE):
+                # Check the next line or same line for amounts
+                vat_match = re.search(r"([\d,]+\.\d{2})", line)
+                next_line_match = re.search(r"([\d,]+\.\d{2})", lines[i + 1]) if i + 1 < len(lines) else None
+
+                # Extract Taxable VAT, VAT Value, or general VAT based on context
+                if "Taxable VAT" in line or "Taxable" in line:
+                    vat_details["Taxable VAT"] = vat_match.group(1) if vat_match else (
+                        next_line_match.group(1) if next_line_match else "Not Found"
+                    )
+                elif "VAT Value" in line or "Value Added Tax" in line:
+                    vat_details["VAT Value"] = vat_match.group(1) if vat_match else (
+                        next_line_match.group(1) if next_line_match else "Not Found"
+                    )
+                else:
+                    vat_details["VAT"] = vat_match.group(1) if vat_match else (
+                        next_line_match.group(1) if next_line_match else "Not Found"
+                    )
+    except Exception as e:
+        st.error(f"Error extracting VAT details: {e}")
+    return vat_details
+
 def extract_fields_document(text):
     """Extract key fields from documents dynamically."""
     fields = {}
@@ -62,32 +93,9 @@ def extract_fields_document(text):
         subtotal = float(subtotal_match.group(2).replace(",", "")) if subtotal_match else None
         fields["Subtotal"] = f"{subtotal:.2f}" if subtotal else "Not Found"
 
-        # Extract Taxable VAT
-        taxable_vat_match = re.search(r"(TAXABLE VAT|Taxable VAT|Taxable)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        taxable_vat = float(taxable_vat_match.group(2).replace(",", "")) if taxable_vat_match else None
-        fields["Taxable VAT"] = f"{taxable_vat:.2f}" if taxable_vat else "Not Found"
-
-        # Extract VAT Value
-        vat_value_match = re.search(r"(VAT VALUE|Vat Value|Value Added Tax)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        vat_value = float(vat_value_match.group(2).replace(",", "")) if vat_value_match else None
-        fields["VAT Value"] = f"{vat_value:.2f}" if vat_value else "Not Found"
-
-        # Extract VAT Amount
-        vat_match = re.search(r"(VAT|Vat|vat|TAX|Tax|tax)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
-        vat_amount = float(vat_match.group(2).replace(",", "")) if vat_match else None
-
-        # Extract VAT Percentage
-        vat_percentage_match = re.search(r"(VAT|Vat|vat|Tax).*?(\d{1,2})%", text, re.IGNORECASE)
-        vat_percentage = int(vat_percentage_match.group(2)) if vat_percentage_match else None
-
-        # Compute VAT if necessary
-        if not vat_amount and subtotal and vat_percentage:
-            vat_amount = (subtotal * vat_percentage) / 100
-        elif not vat_amount and subtotal and fields["Total"] != "Not Found":
-            total = float(fields["Total"].replace(",", ""))
-            vat_amount = total - subtotal
-
-        fields["VAT"] = f"{vat_amount:.2f}" if vat_amount else "Not Found"
+        # Extract VAT details (Taxable VAT, VAT Value, and VAT)
+        vat_details = extract_vat_details(text)
+        fields.update(vat_details)
 
         # Extract Date (common date formats)
         date_match = re.search(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", text)
@@ -127,7 +135,7 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Dynamic Document Processor")
+st.title("Dynamic Document Processor with VAT Heading Detection")
 
 # Account Dropdown
 selected_account = st.selectbox(
