@@ -57,8 +57,18 @@ def extract_fields(text):
         fields["Tip"] = tip_match.group(2) if tip_match else "Not Found"
 
         # Extract VAT
-        vat_match = re.search(r'(VAT|Vat|vat)[^\d]*([\d,]+\.\d{2})', text)
-        fields["VAT"] = vat_match.group(2) if vat_match else "Not Found"
+        vat_match = re.search(r'(VAT|Vat|vat|V\.A\.T\.|V\.A\.T)[^\d]*([\d,]+\.\d{2})', text)
+        if vat_match:
+            fields["VAT"] = vat_match.group(2)
+        else:
+            # Try calculating VAT if Total and Subtotal exist
+            subtotal_match = re.search(r'(Subtotal|SUBTOTAL|subtotal)[^\d]*([\d,]+\.\d{2})', text)
+            if subtotal_match and total_match:
+                subtotal = float(subtotal_match.group(2).replace(",", ""))
+                total = float(total_match.group(2).replace(",", ""))
+                fields["VAT"] = f"{total - subtotal:.2f}" if total > subtotal else "Not Found"
+            else:
+                fields["VAT"] = "Not Found"
 
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
@@ -88,31 +98,9 @@ def generate_pdf(fields):
     pdf.output(pdf_file_path)
     return pdf_file_path
 
-# Account Data
-account_data = {
-    "180201": "Debtors Suspense - Personal expenses made to be refunded to company",
-    "527001": "WELFARE - For office expenses like coffee or gifts like flowers/team building functions",
-    "600001": "HOTEL MEALS FOREIGN - Hotel and meals for all overseas travel (including Africa)",
-    "601001": "OVERSEAS TRAVEL - Flights and transfers",
-    "602001": "HOTELS MEALS LOCAL - Local hotel and meal allowances while traveling",
-    "603001": "TRAVEL LOCAL - Flights, car hire, Uber, etc.",
-    "604001": "LOCAL ENTERTAINMENT - Client meetings",
-    "605001": "CONFERENCES",
-    "650001": "ASSETS LESS THAN R3000",
-}
-
-# Combine account numbers and descriptions for dropdown
-dropdown_options = [f"{key} - {value}" for key, value in account_data.items()]
-
 # Streamlit App
 st.title("Enhanced Document Processor with Focus on Total, Tip, and VAT")
 st.write("Upload a document to classify, extract fields, and generate a PDF.")
-
-# Dropdown for Account Selection
-selected_option = st.selectbox("Select Account", options=dropdown_options)
-selected_account, selected_description = selected_option.split(" - ", 1)
-st.write(f"**Selected Account Number:** {selected_account}")
-st.write(f"**Account Description:** {selected_description}")
 
 # File Upload
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
