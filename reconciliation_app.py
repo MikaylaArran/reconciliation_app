@@ -1,15 +1,59 @@
-import streamlit as st
-import pytesseract
-from PIL import Image, ImageOps
-import pandas as pd
-import re
-from fpdf import FPDF
+    "700035": "GENERAL POSTAGE",
+    "702001": "GENERAL STATIONERY",
+    "703001": "GENERAL COURIER SERVICES",
+}
 
-# Configure Tesseract executable path
-pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Ensure Tesseract is installed and accessible
+# Streamlit App
+st.title("Enhanced Document Processor with Account Selection")
+st.write("Upload a document to classify, extract fields, and generate a PDF.")
 
-# OCR Function
+# Dropdown for Account Selection
+selected_account = st.selectbox("Select Account Number", options=account_data.keys())
+st.write(f"**Account Description:** {account_data[selected_account]}")
+
+# OCR and Document Processing
+uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
+
+if uploaded_file:
+    # Load image
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Document", use_column_width=True)
+
+    st.write("Preprocessing image...")
+    processed_image = preprocess_image(image)
+    st.image(processed_image, caption="Preprocessed Image", use_column_width=True)
+
+    st.write("Extracting text...")
+    extracted_text = extract_text(processed_image)
+
+    # Classify Document
+    doc_type = classify_document(extracted_text)
+    st.subheader(f"Document Type: {doc_type}")
+
+    # Extract Fields
+    st.write("Extracting fields...")
+    fields = extract_fields(extracted_text, doc_type)
+
+    st.subheader("Extracted Fields")
+    for field, value in fields.items():
+        st.write(f"**{field}:** {value}")
+
+    # Generate PDF
+    st.write("Generating PDF...")
+    pdf_file_path = generate_pdf(fields)
+    with open(pdf_file_path, "rb") as pdf_file:
+        st.download_button(
+            "Download Extracted Data as PDF",
+            pdf_file,
+            file_name="extracted_data.pdf",
+            mime="application/pdf",
+        )
+else:
+    st.write("Please upload a document.")
+
+# Utility Functions
 def extract_text(image):
+    """Extract text from the uploaded document."""
     try:
         custom_config = r'--oem 3 --psm 6'
         return pytesseract.image_to_string(image, config=custom_config)
@@ -17,8 +61,8 @@ def extract_text(image):
         st.error(f"Error during OCR: {e}")
         return ""
 
-# Preprocess Image
 def preprocess_image(image):
+    """Preprocess the uploaded image for OCR."""
     try:
         image = image.convert("RGB")
         base_width = 1000
@@ -33,8 +77,8 @@ def preprocess_image(image):
         st.error(f"Error during preprocessing: {e}")
         return image
 
-# Document Classifier
 def classify_document(text):
+    """Classify the document based on extracted text."""
     if "account" in text.lower() or "balance" in text.lower():
         return "Bank Statement"
     elif "vat" in text.lower() or "total" in text.lower():
@@ -44,8 +88,8 @@ def classify_document(text):
     else:
         return "Unknown"
 
-# Field Extraction with focus on Total, Tip, and VAT
 def extract_fields(text, doc_type):
+    """Extract specific fields based on document type."""
     fields = {}
     try:
         if doc_type == "Receipt":
@@ -54,13 +98,12 @@ def extract_fields(text, doc_type):
             fields["VAT"] = re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
         else:
             fields["Note"] = "No tailored fields for this document type."
-
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
     return fields
 
-# PDF Generation
 def generate_pdf(fields):
+    """Generate a PDF with the extracted fields."""
     pdf = FPDF()
     pdf.add_page()
 
@@ -82,54 +125,3 @@ def generate_pdf(fields):
     pdf_file_path = "extracted_data.pdf"
     pdf.output(pdf_file_path)
     return pdf_file_path
-
-# Streamlit App
-st.title("Enhanced Document Processor with Accounts")
-st.write("Upload a document and Excel sheet to classify, extract fields, and generate a PDF.")
-
-# File uploader for Excel sheet
-uploaded_excel = st.file_uploader("Upload Account Excel Sheet (XLSX)", type=["xlsx"])
-account_choices = {}
-
-if uploaded_excel:
-    excel_data = pd.ExcelFile(uploaded_excel)
-    sheet_name = "Chart Numbers"  # Adjust this as needed
-    if sheet_name in excel_data.sheet_names:
-        sheet_data = pd.read_excel(excel_data, sheet_name=sheet_name)
-        # Assuming 'Account' and 'Description' are columns
-        if "Account" in sheet_data.columns and "Description" in sheet_data.columns:
-            account_choices = sheet_data.set_index("Account")["Description"].to_dict()
-
-    selected_account = st.selectbox("Select Account", options=account_choices.keys())
-    st.write(f"Account Description: {account_choices.get(selected_account, 'Not Found')}")
-
-# File uploader for document
-uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
-
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Document", use_column_width=True)
-
-    st.write("Preprocessing image...")
-    processed_image = preprocess_image(image)
-    st.image(processed_image, caption="Preprocessed Image", use_column_width=True)
-
-    st.write("Extracting text...")
-    extracted_text = extract_text(processed_image)
-
-    doc_type = classify_document(extracted_text)
-    st.subheader(f"Document Type: {doc_type}")
-
-    st.write("Extracting fields...")
-    fields = extract_fields(extracted_text, doc_type)
-
-    st.subheader("Extracted Fields")
-    for field, value in fields.items():
-        st.write(f"**{field}:** {value}")
-
-    st.write("Generating PDF...")
-    pdf_file_path = generate_pdf(fields)
-    with open(pdf_file_path, "rb") as pdf_file:
-        st.download_button("Download Extracted Data as PDF", pdf_file, file_name="extracted_data.pdf", mime="application/pdf")
-else:
-    st.write("Please upload a document.")
