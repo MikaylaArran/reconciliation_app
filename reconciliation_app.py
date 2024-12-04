@@ -35,40 +35,77 @@ def extract_text(image):
 
 def classify_document(text):
     """Classify the document based on extracted text."""
-    if "account" in text.lower() or "balance" in text.lower():
+    text_lower = text.lower()
+    if "account" in text_lower or "balance" in text_lower or "branch" in text_lower:
         return "Bank Statement"
-    elif "vat" in text.lower() or "total" in text.lower():
-        return "Receipt"
-    elif "invoice" in text.lower() or "due" in text.lower():
+    elif "vat" in text_lower or "total" in text_lower or "tip" in text_lower:
+        return "Slip/Invoice"
+    elif "invoice" in text_lower or "due" in text_lower:
         return "Invoice"
     else:
         return "Unknown"
 
-def extract_fields(text):
-    """Extract specific fields with a focus on Total, Tip, and VAT."""
+def extract_fields_sa(text, doc_type):
+    """Extract fields tailored for South African slips, invoices, and bank statements."""
     fields = {}
     try:
-        # Extract Total
-        total_match = re.search(r'(Total|TOTAL|total)[^\d]*([\d,]+\.\d{2})', text)
-        fields["Total"] = total_match.group(2) if total_match else "Not Found"
+        if doc_type == "Slip/Invoice":
+            # Extract Store Name (common SA stores)
+            store_match = re.search(
+                r"(Woolworths|Checkers|Pick n Pay|Spar|Shoprite|Clicks|Dis-Chem)",
+                text,
+                re.IGNORECASE,
+            )
+            fields["Store Name"] = store_match.group(0) if store_match else "Unknown Store"
 
-        # Extract Tip
-        tip_match = re.search(r'(Tip|TIP|tip)[^\d]*([\d,]+\.\d{2})', text)
-        fields["Tip"] = tip_match.group(2) if tip_match else "Not Found"
+            # Extract Date
+            date_match = re.search(r"\b\d{2}[/-]\d{2}[/-]\d{4}\b", text)
+            fields["Date"] = date_match.group(0) if date_match else "Not Found"
 
-        # Extract VAT
-        vat_match = re.search(r'(VAT|Vat|vat|V\.A\.T\.|V\.A\.T)[^\d]*([\d,]+\.\d{2})', text)
-        if vat_match:
-            fields["VAT"] = vat_match.group(2)
+            # Extract Total
+            total_match = re.search(r"(Total|TOTAL|total)[^\d]*([\d,]+\.\d{2})", text)
+            fields["Total"] = total_match.group(2) if total_match else "Not Found"
+
+            # Extract Tip
+            tip_match = re.search(r"(Tip|TIP|tip)[^\d]*([\d,]+\.\d{2})", text)
+            fields["Tip"] = tip_match.group(2) if tip_match else "Not Found"
+
+            # Extract VAT
+            vat_match = re.search(r"(VAT|Vat|vat)[^\d]*([\d,]+\.\d{2})", text)
+            fields["VAT"] = vat_match.group(2) if vat_match else "Not Found"
+
+        elif doc_type == "Bank Statement":
+            # Extract Account Number
+            acc_number_match = re.search(r"Account Number[^\d]*(\d{10,20})", text)
+            fields["Account Number"] = acc_number_match.group(1) if acc_number_match else "Not Found"
+
+            # Extract Branch Code
+            branch_code_match = re.search(r"Branch Code[^\d]*(\d{6})", text)
+            fields["Branch Code"] = branch_code_match.group(1) if branch_code_match else "Not Found"
+
+            # Extract Transactions
+            transactions = re.findall(
+                r"(\d{2}[/-]\d{2}[/-]\d{4})[^\d]*(Credit|Debit)[^\d]*(\d+[.,]\d{2})", text, re.IGNORECASE
+            )
+            fields["Transactions"] = [
+                f"{t[0]} - {t[1]}: R{t[2].replace(',', '')}" for t in transactions
+            ] if transactions else "No Transactions Found"
+
+        elif doc_type == "Invoice":
+            # Extract Invoice Number
+            invoice_number_match = re.search(r"Invoice Number[^\d]*(\d+)", text)
+            fields["Invoice Number"] = invoice_number_match.group(1) if invoice_number_match else "Not Found"
+
+            # Extract Due Date
+            due_date_match = re.search(r"Due Date[^\d]*(\d{2}[/-]\d{2}[/-]\d{4})", text)
+            fields["Due Date"] = due_date_match.group(1) if due_date_match else "Not Found"
+
+            # Extract Total Amount
+            total_amount_match = re.search(r"(Total|TOTAL|total)[^\d]*([\d,]+\.\d{2})", text)
+            fields["Total Amount"] = total_amount_match.group(2) if total_amount_match else "Not Found"
+
         else:
-            # Try calculating VAT if Total and Subtotal exist
-            subtotal_match = re.search(r'(Subtotal|SUBTOTAL|subtotal)[^\d]*([\d,]+\.\d{2})', text)
-            if subtotal_match and total_match:
-                subtotal = float(subtotal_match.group(2).replace(",", ""))
-                total = float(total_match.group(2).replace(",", ""))
-                fields["VAT"] = f"{total - subtotal:.2f}" if total > subtotal else "Not Found"
-            else:
-                fields["VAT"] = "Not Found"
+            fields["Note"] = "Document type not recognized for field extraction."
 
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
@@ -99,7 +136,7 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Enhanced Document Processor with Focus on Total, Tip, and VAT")
+st.title("South African Document Processor")
 st.write("Upload a document to classify, extract fields, and generate a PDF.")
 
 # File Upload
@@ -121,7 +158,7 @@ if uploaded_file:
     st.subheader(f"Document Type: {doc_type}")
 
     st.write("Extracting fields...")
-    fields = extract_fields(extracted_text)
+    fields = extract_fields_sa(extracted_text, doc_type)
 
     st.subheader("Extracted Fields")
     for field, value in fields.items():
