@@ -1,6 +1,7 @@
 import streamlit as st
 import pytesseract
 from PIL import Image, ImageOps
+import pandas as pd
 import re
 from fpdf import FPDF
 
@@ -43,33 +44,16 @@ def classify_document(text):
     else:
         return "Unknown"
 
-# Field Extraction
+# Field Extraction with focus on Total, Tip, and VAT
 def extract_fields(text, doc_type):
     fields = {}
     try:
         if doc_type == "Receipt":
-            fields["Store Name"] = re.search(r'(Woolworths|Checkers|Pick n Pay|Spar|Shoprite)', text, re.IGNORECASE).group(0) if re.search(r'(Woolworths|Checkers|Pick n Pay|Spar|Shoprite)', text, re.IGNORECASE) else "Not Found"
-            fields["Date"] = re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text).group(0) if re.search(r'\b\d{2}[/-]\d{2}[/-]\d{4}\b', text) else "Not Found"
             fields["Total"] = re.search(r'Total.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'Total.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
-            fields["VAT Amount"] = re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
-            items = re.findall(r'(Item|Product).*?(\d+\.\d{2})', text, re.IGNORECASE)
-            fields["Items"] = [f"{item[0]}: {item[1]}" for item in items] if items else "Not Found"
-
-        elif doc_type == "Bank Statement":
-            fields["Bank Name"] = re.search(r'(FNB|Capitec|Absa|Standard Bank|Nedbank)', text, re.IGNORECASE).group(0) if re.search(r'(FNB|Capitec|Absa|Standard Bank|Nedbank)', text, re.IGNORECASE) else "Not Found"
-            fields["Account Number"] = re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text).group(1) if re.search(r'Account Number.*?(\d{4}[- ]\d{4}[- ]\d{4})', text) else "Not Found"
-            fields["Balance"] = re.search(r'Balance.*?(\d+\.\d{2})', text).group(1) if re.search(r'Balance.*?(\d+\.\d{2})', text) else "Not Found"
-            transactions = re.findall(r'(\d{2}[/-]\d{2}[/-]\d{4}).*?(Credit|Debit).*?(\d+\.\d{2})', text, re.IGNORECASE)
-            fields["Transactions"] = [f"{t[0]} - {t[1]}: {t[2]}" for t in transactions] if transactions else "Not Found"
-
-        elif doc_type == "Invoice":
-            fields["Invoice Number"] = re.search(r'Invoice Number.*?(\d+)', text).group(1) if re.search(r'Invoice Number.*?(\d+)', text) else "Not Found"
-            fields["Due Date"] = re.search(r'Due Date.*?(\d{2}[/-]\d{2}[/-]\d{4})', text).group(1) if re.search(r'Due Date.*?(\d{2}[/-]\d{2}[/-]\d{4})', text) else "Not Found"
-            fields["Total Amount"] = re.search(r'Total.*?(\d+\.\d{2})', text).group(1) if re.search(r'Total.*?(\d+\.\d{2})', text) else "Not Found"
-            fields["VAT"] = re.search(r'VAT.*?(\d+\.\d{2})', text).group(1) if re.search(r'VAT.*?(\d+\.\d{2})', text) else "Not Found"
-
+            fields["Tip"] = re.search(r'Tip.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'Tip.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
+            fields["VAT"] = re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
         else:
-            fields["Note"] = "Unknown document type or no tailored fields found."
+            fields["Note"] = "No tailored fields for this document type."
 
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
@@ -100,9 +84,26 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Enhanced Document Processor")
-st.write("Upload a document to classify, extract fields, and generate a PDF.")
+st.title("Enhanced Document Processor with Accounts")
+st.write("Upload a document and Excel sheet to classify, extract fields, and generate a PDF.")
 
+# File uploader for Excel sheet
+uploaded_excel = st.file_uploader("Upload Account Excel Sheet (XLSX)", type=["xlsx"])
+account_choices = {}
+
+if uploaded_excel:
+    excel_data = pd.ExcelFile(uploaded_excel)
+    sheet_name = "Chart Numbers"  # Adjust this as needed
+    if sheet_name in excel_data.sheet_names:
+        sheet_data = pd.read_excel(excel_data, sheet_name=sheet_name)
+        # Assuming 'Account' and 'Description' are columns
+        if "Account" in sheet_data.columns and "Description" in sheet_data.columns:
+            account_choices = sheet_data.set_index("Account")["Description"].to_dict()
+
+    selected_account = st.selectbox("Select Account", options=account_choices.keys())
+    st.write(f"Account Description: {account_choices.get(selected_account, 'Not Found')}")
+
+# File uploader for document
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
 
 if uploaded_file:
