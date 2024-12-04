@@ -44,16 +44,22 @@ def classify_document(text):
     else:
         return "Unknown"
 
-def extract_fields(text, doc_type):
-    """Extract specific fields based on document type."""
+def extract_fields(text):
+    """Extract specific fields with a focus on Total, Tip, and VAT."""
     fields = {}
     try:
-        if doc_type == "Receipt":
-            fields["Total"] = re.search(r'Total.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'Total.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
-            fields["Tip"] = re.search(r'Tip.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'Tip.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
-            fields["VAT"] = re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE).group(1) if re.search(r'VAT.*?(\d+\.\d{2})', text, re.IGNORECASE) else "Not Found"
-        else:
-            fields["Note"] = "No tailored fields for this document type."
+        # Extract Total
+        total_match = re.search(r'(Total|TOTAL|total)[^\d]*([\d,]+\.\d{2})', text)
+        fields["Total"] = total_match.group(2) if total_match else "Not Found"
+
+        # Extract Tip
+        tip_match = re.search(r'(Tip|TIP|tip)[^\d]*([\d,]+\.\d{2})', text)
+        fields["Tip"] = tip_match.group(2) if tip_match else "Not Found"
+
+        # Extract VAT
+        vat_match = re.search(r'(VAT|Vat|vat)[^\d]*([\d,]+\.\d{2})', text)
+        fields["VAT"] = vat_match.group(2) if vat_match else "Not Found"
+
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
     return fields
@@ -99,7 +105,7 @@ account_data = {
 dropdown_options = [f"{key} - {value}" for key, value in account_data.items()]
 
 # Streamlit App
-st.title("Enhanced Document Processor with Account Selection")
+st.title("Enhanced Document Processor with Focus on Total, Tip, and VAT")
 st.write("Upload a document to classify, extract fields, and generate a PDF.")
 
 # Dropdown for Account Selection
@@ -127,7 +133,7 @@ if uploaded_file:
     st.subheader(f"Document Type: {doc_type}")
 
     st.write("Extracting fields...")
-    fields = extract_fields(extracted_text, doc_type)
+    fields = extract_fields(extracted_text)
 
     st.subheader("Extracted Fields")
     for field, value in fields.items():
