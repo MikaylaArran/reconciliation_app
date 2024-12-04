@@ -172,7 +172,7 @@ if uploaded_file:
     fields = extract_fields_document(extracted_text)
 
     st.subheader("Extracted Fields")
-    for st.subheader("Extracted Fields")
+    st.subheader("Extracted Fields")
     for field, value in fields.items():
         st.write(f"**{field}:** {value}")
 
