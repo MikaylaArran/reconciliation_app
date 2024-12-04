@@ -34,7 +34,7 @@ def extract_text(image):
         return ""
 
 def extract_fields_sa_receipt(text):
-    """Extract fields from South African receipts."""
+    """Extract key fields from South African receipts without items."""
     fields = {}
     try:
         # Extract Store Name
@@ -56,10 +56,6 @@ def extract_fields_sa_receipt(text):
         # Extract Taxable Value
         taxable_match = re.search(r"TAXABLE VAL[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
         fields["Taxable Value"] = taxable_match.group(1) if taxable_match else "Not Found"
-
-        # Extract Items and Prices (optional)
-        items = re.findall(r"([A-Za-z\s]+)[^\d]*([\d,]+\.\d{2})", text)
-        fields["Items"] = [f"{item[0].strip()}: R{item[1]}" for item in items] if items else "Not Found"
 
     except Exception as e:
         st.error(f"Error extracting fields: {e}")
@@ -105,8 +101,8 @@ def process_pdf(uploaded_pdf):
         return ""
 
 # Streamlit App
-st.title("South African Receipt Processor (PDF & Images)")
-st.write("Upload a South African receipt (image or PDF) to extract details and generate a PDF.")
+st.title("South African Receipt Processor (Excluding Items)")
+st.write("Upload a South African receipt (image or PDF) to extract key details and generate a PDF.")
 
 # File Upload
 uploaded_file = st.file_uploader("Upload Receipt (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
