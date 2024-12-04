@@ -25,13 +25,20 @@ account_data = {
     "703001": "GENERAL COURIER SERVICES",
 }
 
+# Combine account numbers and descriptions for dropdown
+dropdown_options = [f"{key} - {value}" for key, value in account_data.items()]
+
 # Streamlit App
 st.title("Enhanced Document Processor with Account Selection")
 st.write("Upload a document to classify, extract fields, and generate a PDF.")
 
 # Dropdown for Account Selection
-selected_account = st.selectbox("Select Account Number", options=account_data.keys())
-st.write(f"**Account Description:** {account_data[selected_account]}")
+selected_option = st.selectbox("Select Account", options=dropdown_options)
+
+# Extract selected account number and description
+selected_account, selected_description = selected_option.split(" - ", 1)
+st.write(f"**Selected Account Number:** {selected_account}")
+st.write(f"**Account Description:** {selected_description}")
 
 # OCR and Document Processing
 uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
