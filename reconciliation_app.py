@@ -1,3 +1,25 @@
+import streamlit as st
+import pytesseract
+from PIL import Image, ImageOps
+import re
+from fpdf import FPDF
+
+# Configure Tesseract executable path
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Ensure Tesseract is installed and accessible
+
+# Account Number and Description Data
+account_data = {
+    "180201": "Debtors Suspense - Personal expenses made to be refunded to company",
+    "527001": "WELFARE - For office expenses like coffee or gifts like flowers/team building functions",
+    "600001": "HOTEL MEALS FOREIGN - Hotel and meals for all overseas travel (including Africa)",
+    "601001": "OVERSEAS TRAVEL - Flights and transfers",
+    "602001": "HOTELS MEALS LOCAL - Local hotel and meal allowances while traveling",
+    "603001": "TRAVEL LOCAL - Flights, car hire, Uber, etc.",
+    "604001": "LOCAL ENTERTAINMENT - Client meetings",
+    "605001": "CONFERENCES",
+    "650001": "ASSETS LESS THAN R3000",
+    "750241": "PRINTING",
+    "750035": "GENERAL AIRFREIGHT",
     "700035": "GENERAL POSTAGE",
     "702001": "GENERAL STATIONERY",
     "703001": "GENERAL COURIER SERVICES",
