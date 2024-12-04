@@ -7,11 +7,38 @@ from fpdf import FPDF
 # Configure Tesseract executable path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
 
-# Predefined account details
+# Predefined account details (30 accounts as requested)
 ACCOUNT_DETAILS = [
     {"Acc No": "180201", "Acc Description": "Debtors Suspense - Personal expenses made to be refunded to company"},
-    {"Acc No": "527001", "Acc Description": "WELFARE - For office expenses like coffee or gifts, team building, etc."},
-    # Add more accounts as needed...
+    {"Acc No": "527001", "Acc Description": "WELFARE - Office expenses like coffee, gifts, or team building"},
+    {"Acc No": "600001", "Acc Description": "HOTEL MEALS FOREIGN - Hotel and meals for overseas travel"},
+    {"Acc No": "601001", "Acc Description": "OVERSEAS TRAVEL - Flights and transfers"},
+    {"Acc No": "602001", "Acc Description": "HOTELS MEALS LOCAL - Local hotel and meal allowances while traveling"},
+    {"Acc No": "603001", "Acc Description": "TRAVEL LOCAL - Flights, car hire, Uber, etc."},
+    {"Acc No": "604001", "Acc Description": "LOCAL ENTERTAINMENT - Client meetings"},
+    {"Acc No": "605001", "Acc Description": "CONFERENCES"},
+    {"Acc No": "650001", "Acc Description": "ASSETS LESS THAN R3000"},
+    {"Acc No": "750241", "Acc Description": "PRINTING"},
+    {"Acc No": "750035", "Acc Description": "GENERAL AIRFREIGHT"},
+    {"Acc No": "700035", "Acc Description": "GENERAL POSTAGE"},
+    {"Acc No": "700031", "Acc Description": "POSTAGES"},
+    {"Acc No": "750491", "Acc Description": "SCHEME PRINTING"},
+    {"Acc No": "750194", "Acc Description": "MEMBERSHIP FEES"},
+    {"Acc No": "750211", "Acc Description": "PHOTOCOPYING"},
+    {"Acc No": "750531", "Acc Description": "STATIONERY"},
+    {"Acc No": "750541", "Acc Description": "SUBSCRIPTIONS"},
+    {"Acc No": "750005", "Acc Description": "BRANDING COSTS - Branding for corporate gifts only"},
+    {"Acc No": "750182", "Acc Description": "PROMOTIONAL ITEMS - Corporate gifts only"},
+    {"Acc No": "800091", "Acc Description": "OUT OF SCOPE EXPENSES"},
+    {"Acc No": "800141", "Acc Description": "SOFTWARE LICENSES"},
+    {"Acc No": "803061", "Acc Description": "PRINTER CONSUMABLES"},
+    {"Acc No": "756001", "Acc Description": "CONSULTANCY FEES"},
+    {"Acc No": "750031", "Acc Description": "BANK CHARGES - Always for cost of cardholder"},
+    {"Acc No": "790001", "Acc Description": "INTEREST PAID - OTHER"},
+    {"Acc No": "790002", "Acc Description": "INTEREST PAID - BANK"},
+    {"Acc No": "470001", "Acc Description": "INTEREST RECEIVED BANK BALANCE"},
+    {"Acc No": "470101", "Acc Description": "INTEREST RECEIVED OTHER"},
+    {"Acc No": "273111", "Acc Description": "VAT Input - Manual journals"},
 ]
 
 # Synonyms for common fields to handle different terminologies
