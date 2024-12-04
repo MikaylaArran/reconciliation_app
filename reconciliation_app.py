@@ -62,24 +62,22 @@ def generate_pdf(fields):
     pdf = FPDF()
     pdf.add_page()
 
-    # Add Unicode font
-    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-    pdf.set_font('DejaVu', size=12)
-
     # Title
-    pdf.set_font("DejaVu", style="B", size=16)
+    pdf.set_font("Arial", style="B", size=16)
     pdf.cell(0, 10, "Extracted Receipt Data", ln=True, align="C")
     pdf.ln(10)
 
     # Fields Table
-    pdf.set_font("DejaVu", size=12)
+    pdf.set_font("Arial", size=12)
     pdf.set_fill_color(200, 220, 255)
     pdf.cell(90, 10, "Field", 1, 0, "C", fill=True)
     pdf.cell(100, 10, "Value", 1, 1, "C", fill=True)
 
     for field, value in fields.items():
+        # Ensure all values are converted to ASCII-friendly strings
+        safe_value = str(value).encode('ascii', 'ignore').decode('ascii')
         pdf.cell(90, 10, field, 1)
-        pdf.cell(100, 10, str(value) if isinstance(value, str) else ", ".join(value), 1, 1)
+        pdf.cell(100, 10, safe_value, 1, 1)
 
     pdf_file_path = "extracted_receipt_data.pdf"
     pdf.output(pdf_file_path)
@@ -101,7 +99,7 @@ def process_pdf(uploaded_pdf):
         return ""
 
 # Streamlit App
-st.title("Receipt Processor (Dynamic Store Name, Unicode Support)")
+st.title("Receipt Processor")
 st.write("Upload a receipt (image or PDF) to extract key details and generate a PDF.")
 
 # File Upload
