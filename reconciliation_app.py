@@ -34,7 +34,7 @@ def extract_text(image):
         return ""
 
 def extract_fields_sa_receipt(text):
-    """Extract key fields from South African receipts dynamically."""
+    """Extract key fields from receipts dynamically."""
     fields = {}
     try:
         # Extract Store Name (dynamically based on the first few lines of the text)
@@ -101,8 +101,8 @@ def process_pdf(uploaded_pdf):
         return ""
 
 # Streamlit App
-st.title("South African Receipt Processor (Dynamic Store Name, Unicode Support)")
-st.write("Upload a South African receipt (image or PDF) to extract key details and generate a PDF.")
+st.title("Receipt Processor (Dynamic Store Name, Unicode Support)")
+st.write("Upload a receipt (image or PDF) to extract key details and generate a PDF.")
 
 # File Upload
 uploaded_file = st.file_uploader("Upload Receipt (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
