@@ -33,13 +33,19 @@ def extract_text(image):
         st.error(f"Error during OCR: {e}")
         return ""
 
-def extract_fields_sa_receipt(text):
-    """Extract key fields from receipts dynamically."""
+def extract_fields_sa_document(text):
+    """Extract key fields from documents dynamically."""
     fields = {}
     try:
-        # Extract Store Name (dynamically based on the first few lines of the text)
+        # Extract Company Name (dynamically based on the first few lines of the text)
         text_lines = text.strip().split("\n")
-        fields["Store Name"] = text_lines[0] if len(text_lines) > 0 else "Unknown Store"
+        # Assume the company name is one of the first three lines
+        if len(text_lines) > 0:
+            fields["Company Name"] = next(
+                (line.strip() for line in text_lines[:3] if line.strip()), "Unknown Company"
+            )
+        else:
+            fields["Company Name"] = "Unknown Company"
 
         # Extract Total Amount
         total_match = re.search(r"(TOTAL|DUE VAT INCL)[^\d]*([\d,]+\.\d{2})", text, re.IGNORECASE)
@@ -64,7 +70,7 @@ def generate_pdf(fields):
 
     # Title
     pdf.set_font("Arial", style="B", size=16)
-    pdf.cell(0, 10, "Extracted Receipt Data", ln=True, align="C")
+    pdf.cell(0, 10, "Extracted Document Data", ln=True, align="C")
     pdf.ln(10)
 
     # Fields Table
@@ -79,7 +85,7 @@ def generate_pdf(fields):
         pdf.cell(90, 10, field, 1)
         pdf.cell(100, 10, safe_value, 1, 1)
 
-    pdf_file_path = "extracted_receipt_data.pdf"
+    pdf_file_path = "extracted_document_data.pdf"
     pdf.output(pdf_file_path)
     return pdf_file_path
 
@@ -99,11 +105,11 @@ def process_pdf(uploaded_pdf):
         return ""
 
 # Streamlit App
-st.title("Receipt Processor")
-st.write("Upload a receipt (image or PDF) to extract key details and generate a PDF.")
+st.title("Document Processor")
+st.write("Upload a document (image or PDF) to extract key details and generate a PDF.")
 
 # File Upload
-uploaded_file = st.file_uploader("Upload Receipt (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
+uploaded_file = st.file_uploader("Upload Document (JPG, PNG, PDF)", type=["jpg", "png", "jpeg", "pdf"])
 
 if uploaded_file:
     # Handle PDF and Images
@@ -113,14 +119,14 @@ if uploaded_file:
     else:
         # Load and process image
         image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Receipt", use_column_width=True)
+        st.image(image, caption="Uploaded Document", use_column_width=True)
         st.write("Preprocessing image...")
         processed_image = preprocess_image(image)
         st.image(processed_image, caption="Preprocessed Image", use_column_width=True)
         extracted_text = extract_text(processed_image)
 
     st.write("Extracting fields...")
-    fields = extract_fields_sa_receipt(extracted_text)
+    fields = extract_fields_sa_document(extracted_text)
 
     st.subheader("Extracted Fields")
     for field, value in fields.items():
@@ -132,8 +138,8 @@ if uploaded_file:
         st.download_button(
             "Download Extracted Data as PDF",
             pdf_file,
-            file_name="extracted_receipt_data.pdf",
+            file_name="extracted_document_data.pdf",
             mime="application/pdf",
         )
 else:
-    st.write("Please upload a receipt.")
+    st.write("Please upload a document.")
