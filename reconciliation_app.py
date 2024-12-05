@@ -134,7 +134,7 @@ def generate_pdf(fields):
     return pdf_file_path
 
 # Streamlit App
-st.title("Dynamic Document Processor with Flexible Field Extraction")
+st.title("Dynamic Document Processor")
 
 # Account Dropdown
 selected_account = st.selectbox(
