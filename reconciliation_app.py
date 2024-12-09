@@ -4,53 +4,37 @@ import pytesseract
 import re
 from difflib import get_close_matches
 
-# Configure Tesseract OCR path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
 
-# Preprocess image for OCR
 def preprocess_image(image):
-    # Convert to grayscale
     grayscale_image = ImageOps.grayscale(image)
-
-    # Enhance edges to improve text clarity
-    enhanced_image = grayscale_image.filter(ImageFilter.EDGE_ENHANCE)
-
-    # Remove small noise
-    filtered_image = enhanced_image.filter(ImageFilter.MedianFilter(size=3))
-
-    # Apply binary thresholding to make text stand out
-    binary_image = filtered_image.point(lambda x: 0 if x < 150 else 255)
-    
+    enhanced_image = ImageOps.autocontrast(grayscale_image)
+    denoised_image = enhanced_image.filter(ImageFilter.MedianFilter(size=3))
+    binary_image = denoised_image.point(lambda x: 0 if x < 150 else 255)
     return binary_image
 
-# Extract text from the preprocessed image
 def extract_text(image):
     ocr_config = r'--oem 3 --psm 6'
     return pytesseract.image_to_string(image, config=ocr_config)
 
-# Fuzzy keyword matching
 def find_closest_keyword(line, keywords):
-    matches = get_close_matches(line.lower(), keywords, n=1, cutoff=0.6)
+    matches = get_close_matches(line.lower(), keywords, n=1, cutoff=0.5)
     return matches[0] if matches else None
 
-# Find field value near keywords
 def find_value_near_keywords(lines, keywords, value_pattern=r"(\d{1,3}(?:,\d{3})*\.\d{2})"):
     keywords_lower = [k.lower() for k in keywords]
     for i, line in enumerate(lines):
         matched_keyword = find_closest_keyword(line, keywords_lower)
         if matched_keyword:
-            # Search for value in the same line
             value_match = re.search(value_pattern, line)
             if value_match:
                 return float(value_match.group(1).replace(",", ""))
-            # If no value in the same line, check the next line
             elif i + 1 < len(lines):
                 next_line_match = re.search(value_pattern, lines[i + 1])
                 if next_line_match:
                     return float(next_line_match.group(1).replace(",", ""))
     return None
 
-# Parse receipt text into structured fields
 def parse_receipt_text(text):
     lines = text.split("\n")
     structured_data = {
@@ -62,21 +46,18 @@ def parse_receipt_text(text):
         "Total": None
     }
 
-    # Extract company name (assume it's in the first few lines)
     for line in lines[:3]:
         if line.strip():
             structured_data["Company Name"] = line.strip()
             break
 
-    # Extract date using regex
-    date_pattern = r'\d{1,2} [A-Za-z]{3,} \d{4}'  # Handles formats like "12 Dec 2023"
+    date_pattern = r'\d{1,2} [A-Za-z]{3,} \d{4}'
     for line in lines:
         date_match = re.search(date_pattern, line)
         if date_match:
             structured_data["Date"] = date_match.group()
             break
 
-    # Extract items and their prices
     item_pattern = r'(.*)\s+R?\s?(\d{1,3}(?:,\d{3})*\.\d{2})$'
     for line in lines:
         item_match = re.match(item_pattern, line)
@@ -85,7 +66,6 @@ def parse_receipt_text(text):
             item_price = float(item_match.group(2).replace(",", ""))
             structured_data["Items"].append({"Item": item_name, "Price": item_price})
 
-    # Synonyms for Subtotal, Tax (VAT), and Total
     synonyms = {
         "Subtotal": [
             r'subtotal', r'sub-total', r'net amount', r'amount before vat',
@@ -101,30 +81,25 @@ def parse_receipt_text(text):
         ]
     }
 
-    # Extract Subtotal, Tax (VAT), and Total
     for field, keywords in synonyms.items():
         structured_data[field] = find_value_near_keywords(lines, keywords)
 
     return structured_data
 
-# Streamlit App Interface
-st.title("Enhanced Receipt Processor with Fuzzy Matching")
+st.title("Enhanced Receipt Processor with Debugging")
 
-# Upload file
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    # Load the image
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Receipt", use_column_width=True)
 
-    # Preprocess and process the image
     processed_image = preprocess_image(image)
     extracted_text = extract_text(processed_image)
-    st.text(f"Raw OCR Text:\n{extracted_text}")  # Debugging: Display raw OCR text
+    st.text(f"Raw OCR Text:\n{extracted_text}")
+
     receipt_data = parse_receipt_text(extracted_text)
 
-    # Display the structured data
     st.subheader("Extracted Receipt Data")
     for key, value in receipt_data.items():
         if key == "Items":
