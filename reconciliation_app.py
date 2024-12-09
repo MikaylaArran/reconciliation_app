@@ -100,6 +100,14 @@ def parse_receipt_text(text):
 # Streamlit App Interface
 st.title("Refined Receipt Processor")
 
+# Dropdown for Account Selection
+accounts = [
+    "Sales Revenue", "Office Supplies", "Travel Expenses", 
+    "Miscellaneous Expenses", "Tax Payments"
+]
+selected_account = st.selectbox("Select an Account Category", accounts)
+st.write(f"Selected Account: {selected_account}")
+
 # Upload file
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
 
