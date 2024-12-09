@@ -14,7 +14,7 @@ def preprocess_image(image):
     # Enhance edges to improve text clarity
     enhanced_image = grayscale_image.filter(ImageFilter.EDGE_ENHANCE)
 
-    # Apply adaptive thresholding to make text stand out
+    # Apply binary thresholding to make text stand out
     binary_image = enhanced_image.point(lambda x: 0 if x < 150 else 255)
     
     return binary_image
@@ -24,7 +24,23 @@ def extract_text(image):
     ocr_config = r'--oem 3 --psm 6'
     return pytesseract.image_to_string(image, config=ocr_config)
 
-# Parse text into structured fields
+# Find field value near keywords
+def find_value_near_keywords(lines, keywords, value_pattern=r"(\d{1,3}(?:,\d{3})*\.\d{2})"):
+    for i, line in enumerate(lines):
+        for keyword in keywords:
+            if re.search(keyword, line, re.IGNORECASE):
+                # Search for value in the same line
+                value_match = re.search(value_pattern, line)
+                if value_match:
+                    return float(value_match.group(1).replace(",", ""))
+                # If no value in the same line, check the next line
+                elif i + 1 < len(lines):
+                    next_line_match = re.search(value_pattern, lines[i + 1])
+                    if next_line_match:
+                        return float(next_line_match.group(1).replace(",", ""))
+    return None
+
+# Parse receipt text into structured fields
 def parse_receipt_text(text):
     lines = text.split("\n")
     structured_data = {
@@ -32,7 +48,7 @@ def parse_receipt_text(text):
         "Date": None,
         "Items": [],
         "Subtotal": None,
-        "Tax": None,
+        "Tax (VAT)": None,
         "Total": None
     }
 
@@ -43,7 +59,7 @@ def parse_receipt_text(text):
             break
 
     # Extract date using regex
-    date_pattern = r'\d{1,2} [A-Za-z]{3,} \d{4}'
+    date_pattern = r'\d{1,2} [A-Za-z]{3,} \d{4}'  # Handles formats like "12 Dec 2023"
     for line in lines:
         date_match = re.search(date_pattern, line)
         if date_match:
@@ -51,29 +67,33 @@ def parse_receipt_text(text):
             break
 
     # Extract items and their prices
-    item_pattern = r'(.*)\s+(\d+\.\d{2})$'
+    item_pattern = r'(.*)\s+(\d{1,3}(?:,\d{3})*\.\d{2})$'
     for line in lines:
         item_match = re.match(item_pattern, line)
         if item_match:
             item_name = item_match.group(1).strip()
-            item_price = float(item_match.group(2))
+            item_price = float(item_match.group(2).replace(",", ""))
             structured_data["Items"].append({"Item": item_name, "Price": item_price})
 
-    # Extract subtotal, tax, and total
-    field_patterns = {
-        "Subtotal": [r'subtotal', r'net', r'amount'],
-        "Tax": [r'tax', r'vat', r'gst'],
-        "Total": [r'total', r'balance', r'amount due']
+    # Synonyms for Subtotal, Tax (VAT), and Total
+    synonyms = {
+        "Subtotal": [
+            r'subtotal', r'sub-total', r'net amount', r'amount before vat',
+            r'exclusive amount', r'excl\. vat'
+        ],
+        "Tax (VAT)": [
+            r'vat', r'vat amount', r'value-added tax', r'tax \(vat\)',
+            r'vat @ \d+%', r'incl\. vat', r'excl\. vat', r'vat payable'
+        ],
+        "Total": [
+            r'total', r'grand total', r'total payable', r'final amount',
+            r'inclusive total', r'amount due'
+        ]
     }
-    
-    for line in lines:
-        for field, patterns in field_patterns.items():
-            if not structured_data[field]:
-                for pattern in patterns:
-                    match = re.search(f"{pattern}[: ]+(\d+\.\d{2})", line, re.IGNORECASE)
-                    if match:
-                        structured_data[field] = float(match.group(1))
-                        break
+
+    # Extract Subtotal, Tax (VAT), and Total
+    for field, keywords in synonyms.items():
+        structured_data[field] = find_value_near_keywords(lines, keywords)
 
     return structured_data
 
