@@ -2,8 +2,6 @@ import streamlit as st
 from PIL import Image, ImageOps, ImageFilter
 import pytesseract
 import re
-import numpy as np
-from numpy import mean
 
 # Configure Tesseract OCR path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update the path if necessary.
@@ -19,20 +17,10 @@ def preprocess_image(image):
     # Denoise image (smooth out irregularities)
     denoised_image = enhanced_image.filter(ImageFilter.MedianFilter(size=3))
 
-    # Deskew image if tilted
-    binary_image = np.array(denoised_image)
-    coords = np.column_stack(np.where(binary_image < 128))
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
-    center = (binary_image.shape[1] // 2, binary_image.shape[0] // 2)
-    rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-    deskewed_image = cv2.warpAffine(binary_image, rotation_matrix, binary_image.shape[::-1], flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    # Apply binary thresholding
+    binary_image = denoised_image.point(lambda x: 0 if x < 150 else 255)
 
-    # Convert back to PIL format
-    return Image.fromarray(deskewed_image)
+    return binary_image
 
 # Extract text from the preprocessed image
 def extract_text(image):
@@ -113,7 +101,7 @@ def parse_receipt_text(text):
     return structured_data
 
 # Streamlit App Interface
-st.title("Improved Receipt Processor")
+st.title("Improved Receipt Processor (No OpenCV)")
 
 # Upload file
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
