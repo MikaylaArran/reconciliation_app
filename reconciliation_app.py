@@ -4,7 +4,7 @@ import pytesseract
 import re
 
 # Configure Tesseract OCR path
-pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Adjust path if necessary
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
 
 # Preprocess image for OCR
 def preprocess_image(image):
@@ -67,7 +67,7 @@ def parse_receipt_text(text):
             break
 
     # Extract items and their prices
-    item_pattern = r'(.*)\s+(\d{1,3}(?:,\d{3})*\.\d{2})$'
+    item_pattern = r'(.*)\s+R?\s?(\d{1,3}(?:,\d{3})*\.\d{2})$'
     for line in lines:
         item_match = re.match(item_pattern, line)
         if item_match:
@@ -87,7 +87,7 @@ def parse_receipt_text(text):
         ],
         "Total": [
             r'total', r'grand total', r'total payable', r'final amount',
-            r'inclusive total', r'amount due'
+            r'inclusive total', r'amount due', r'balance due'
         ]
     }
 
@@ -98,7 +98,7 @@ def parse_receipt_text(text):
     return structured_data
 
 # Streamlit App Interface
-st.title("Enhanced Receipt Processor")
+st.title("Refined Receipt Processor")
 
 # Upload file
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
@@ -111,6 +111,7 @@ if uploaded_file:
     # Preprocess and process the image
     processed_image = preprocess_image(image)
     extracted_text = extract_text(processed_image)
+    st.text(f"Raw OCR Text:\n{extracted_text}")  # Debugging: Display raw OCR text
     receipt_data = parse_receipt_text(extracted_text)
 
     # Display the structured data
