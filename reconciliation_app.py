@@ -83,7 +83,7 @@ def parse_receipt_text(text):
         ],
         "Tax (VAT)": [
             r'vat', r'vat amount', r'value-added tax', r'tax \(vat\)',
-            r'vat @ \d+%', r'incl\. vat', r'excl\. vat', r'vat payable'
+            r'vat @ \d+%', r'incl\. vat', r'excl\. vat', r'vat payable', r'rate.*vat'
         ],
         "Total": [
             r'total', r'grand total', r'total payable', r'final amount',
