@@ -2,52 +2,57 @@ import streamlit as st
 from PIL import Image, ImageOps, ImageFilter
 import pytesseract
 import re
-from difflib import get_close_matches
+import numpy as np
+from numpy import mean
 
 # Configure Tesseract OCR path
-pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update the path if necessary.
 
 # Preprocess image for OCR
 def preprocess_image(image):
     # Convert to grayscale
     grayscale_image = ImageOps.grayscale(image)
 
-    # Enhance edges to improve text clarity
-    enhanced_image = grayscale_image.filter(ImageFilter.EDGE_ENHANCE)
+    # Adjust contrast
+    enhanced_image = ImageOps.autocontrast(grayscale_image)
 
-    # Remove small noise
-    filtered_image = enhanced_image.filter(ImageFilter.MedianFilter(size=3))
+    # Denoise image (smooth out irregularities)
+    denoised_image = enhanced_image.filter(ImageFilter.MedianFilter(size=3))
 
-    # Apply binary thresholding to make text stand out
-    binary_image = filtered_image.point(lambda x: 0 if x < 150 else 255)
-    
-    return binary_image
+    # Deskew image if tilted
+    binary_image = np.array(denoised_image)
+    coords = np.column_stack(np.where(binary_image < 128))
+    angle = cv2.minAreaRect(coords)[-1]
+    if angle < -45:
+        angle = -(90 + angle)
+    else:
+        angle = -angle
+    center = (binary_image.shape[1] // 2, binary_image.shape[0] // 2)
+    rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+    deskewed_image = cv2.warpAffine(binary_image, rotation_matrix, binary_image.shape[::-1], flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+
+    # Convert back to PIL format
+    return Image.fromarray(deskewed_image)
 
 # Extract text from the preprocessed image
 def extract_text(image):
     ocr_config = r'--oem 3 --psm 6'
     return pytesseract.image_to_string(image, config=ocr_config)
 
-# Fuzzy keyword matching
-def find_closest_keyword(line, keywords):
-    matches = get_close_matches(line.lower(), keywords, n=1, cutoff=0.6)
-    return matches[0] if matches else None
-
 # Find field value near keywords
 def find_value_near_keywords(lines, keywords, value_pattern=r"(\d{1,3}(?:,\d{3})*\.\d{2})"):
-    keywords_lower = [k.lower() for k in keywords]
     for i, line in enumerate(lines):
-        matched_keyword = find_closest_keyword(line, keywords_lower)
-        if matched_keyword:
-            # Search for value in the same line
-            value_match = re.search(value_pattern, line)
-            if value_match:
-                return float(value_match.group(1).replace(",", ""))
-            # If no value in the same line, check the next line
-            elif i + 1 < len(lines):
-                next_line_match = re.search(value_pattern, lines[i + 1])
-                if next_line_match:
-                    return float(next_line_match.group(1).replace(",", ""))
+        for keyword in keywords:
+            if re.search(keyword, line, re.IGNORECASE):
+                # Search for value in the same line
+                value_match = re.search(value_pattern, line)
+                if value_match:
+                    return float(value_match.group(1).replace(",", ""))
+                # If no value in the same line, check the next line
+                elif i + 1 < len(lines):
+                    next_line_match = re.search(value_pattern, lines[i + 1])
+                    if next_line_match:
+                        return float(next_line_match.group(1).replace(",", ""))
     return None
 
 # Parse receipt text into structured fields
@@ -69,7 +74,7 @@ def parse_receipt_text(text):
             break
 
     # Extract date using regex
-    date_pattern = r'\d{1,2} [A-Za-z]{3,} \d{4}'  # Handles formats like "12 Dec 2023"
+    date_pattern = r'\d{1,2} [A-Za-z]{3,} \d{4}'
     for line in lines:
         date_match = re.search(date_pattern, line)
         if date_match:
@@ -93,7 +98,7 @@ def parse_receipt_text(text):
         ],
         "Tax (VAT)": [
             r'vat', r'vat amount', r'value-added tax', r'tax \(vat\)',
-            r'vat @ \d+%', r'incl\. vat', r'excl\. vat', r'vat payable', r'rate.*vat'
+            r'vat @ \d+%', r'incl\. vat', r'excl\. vat', r'vat payable'
         ],
         "Total": [
             r'total', r'grand total', r'total payable', r'final amount',
@@ -108,7 +113,7 @@ def parse_receipt_text(text):
     return structured_data
 
 # Streamlit App Interface
-st.title("Enhanced Receipt Processor with Fuzzy Matching")
+st.title("Improved Receipt Processor")
 
 # Upload file
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
@@ -121,7 +126,11 @@ if uploaded_file:
     # Preprocess and process the image
     processed_image = preprocess_image(image)
     extracted_text = extract_text(processed_image)
-    st.text(f"Raw OCR Text:\n{extracted_text}")  # Debugging: Display raw OCR text
+
+    # Display raw OCR text for debugging
+    st.text(f"Raw OCR Text:\n{extracted_text}")
+
+    # Parse the extracted text
     receipt_data = parse_receipt_text(extracted_text)
 
     # Display the structured data
