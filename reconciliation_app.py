@@ -1,8 +1,6 @@
 import streamlit as st
-import cv2
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFilter
 import pytesseract
-import numpy as np
 import re
 
 # Configure Tesseract path
@@ -10,28 +8,15 @@ pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
 
 # Preprocess the uploaded image
 def preprocess_image(image):
-    # Convert PIL image to OpenCV format
-    image_cv = np.array(image)
-    gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
+    # Convert to grayscale
+    grayscale_image = ImageOps.grayscale(image)
 
-    # Remove noise and enhance the image
-    denoised = cv2.fastNlMeansDenoising(gray, h=30)
+    # Enhance edges and denoise
+    enhanced_image = grayscale_image.filter(ImageFilter.EDGE_ENHANCE_MORE)
 
-    # Deskew the image
-    coords = cv2.findNonZero(cv2.bitwise_not(denoised))
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
-    (h, w) = denoised.shape[:2]
-    center = (w // 2, h // 2)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-    deskewed = cv2.warpAffine(denoised, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-
-    # Apply thresholding
-    _, binary = cv2.threshold(deskewed, 128, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return binary
+    # Apply binary thresholding
+    binary_image = enhanced_image.point(lambda p: 0 if p < 128 else 255)
+    return binary_image
 
 # Extract text using OCR
 def extract_text(image):
@@ -104,8 +89,7 @@ if uploaded_file is not None:
 
     # Preprocess and process receipt
     processed_image = preprocess_image(image)
-    pil_processed = Image.fromarray(processed_image)  # Convert back to PIL for OCR
-    extracted_text = extract_text(pil_processed)
+    extracted_text = extract_text(processed_image)
     receipt_data = parse_receipt_text(extracted_text)
 
     # Display extracted data
