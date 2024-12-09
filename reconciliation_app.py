@@ -2,6 +2,7 @@ import streamlit as st
 from PIL import Image, ImageOps, ImageFilter
 import pytesseract
 import re
+from difflib import get_close_matches
 
 # Configure Tesseract OCR path
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
@@ -14,8 +15,11 @@ def preprocess_image(image):
     # Enhance edges to improve text clarity
     enhanced_image = grayscale_image.filter(ImageFilter.EDGE_ENHANCE)
 
+    # Remove small noise
+    filtered_image = enhanced_image.filter(ImageFilter.MedianFilter(size=3))
+
     # Apply binary thresholding to make text stand out
-    binary_image = enhanced_image.point(lambda x: 0 if x < 150 else 255)
+    binary_image = filtered_image.point(lambda x: 0 if x < 150 else 255)
     
     return binary_image
 
@@ -24,20 +28,26 @@ def extract_text(image):
     ocr_config = r'--oem 3 --psm 6'
     return pytesseract.image_to_string(image, config=ocr_config)
 
+# Fuzzy keyword matching
+def find_closest_keyword(line, keywords):
+    matches = get_close_matches(line.lower(), keywords, n=1, cutoff=0.6)
+    return matches[0] if matches else None
+
 # Find field value near keywords
 def find_value_near_keywords(lines, keywords, value_pattern=r"(\d{1,3}(?:,\d{3})*\.\d{2})"):
+    keywords_lower = [k.lower() for k in keywords]
     for i, line in enumerate(lines):
-        for keyword in keywords:
-            if re.search(keyword, line, re.IGNORECASE):
-                # Search for value in the same line
-                value_match = re.search(value_pattern, line)
-                if value_match:
-                    return float(value_match.group(1).replace(",", ""))
-                # If no value in the same line, check the next line
-                elif i + 1 < len(lines):
-                    next_line_match = re.search(value_pattern, lines[i + 1])
-                    if next_line_match:
-                        return float(next_line_match.group(1).replace(",", ""))
+        matched_keyword = find_closest_keyword(line, keywords_lower)
+        if matched_keyword:
+            # Search for value in the same line
+            value_match = re.search(value_pattern, line)
+            if value_match:
+                return float(value_match.group(1).replace(",", ""))
+            # If no value in the same line, check the next line
+            elif i + 1 < len(lines):
+                next_line_match = re.search(value_pattern, lines[i + 1])
+                if next_line_match:
+                    return float(next_line_match.group(1).replace(",", ""))
     return None
 
 # Parse receipt text into structured fields
@@ -98,15 +108,7 @@ def parse_receipt_text(text):
     return structured_data
 
 # Streamlit App Interface
-st.title("Refined Receipt Processor")
-
-# Dropdown for Account Selection
-accounts = [
-    "Sales Revenue", "Office Supplies", "Travel Expenses", 
-    "Miscellaneous Expenses", "Tax Payments"
-]
-selected_account = st.selectbox("Select an Account Category", accounts)
-st.write(f"Selected Account: {selected_account}")
+st.title("Enhanced Receipt Processor with Fuzzy Matching")
 
 # Upload file
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
