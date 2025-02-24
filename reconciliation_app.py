@@ -194,7 +194,7 @@ def create_excel(receipt_data):
 # ------------------------
 # Streamlit App Interface
 # ------------------------
-st.title("Enhanced Receipt Processor with Multi-Format Extraction")
+st.title("Receipt Processor")
 
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
 
