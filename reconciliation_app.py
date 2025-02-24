@@ -5,17 +5,23 @@ import re
 import io
 import streamlit as st
 
+# ------------------------
+# CONFIGURATION
+# ------------------------
 # Configure Tesseract OCR path (update if necessary)
 pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
 
+# ------------------------
+# IMAGE PROCESSING
+# ------------------------
 def preprocess_image(image):
     """Preprocess the image to improve OCR results, especially for blurry slips."""
-    grayscale_image = ImageOps.grayscale(image)
-    enhanced_image = ImageOps.autocontrast(grayscale_image)
-    sharpener = ImageEnhance.Sharpness(enhanced_image)
-    sharpened_image = sharpener.enhance(2.0)  # Increase sharpness (adjust factor as needed)
-    denoised_image = sharpened_image.filter(ImageFilter.MedianFilter(size=3))
-    binary_image = denoised_image.point(lambda x: 0 if x < 150 else 255)
+    grayscale_image = ImageOps.grayscale(image)                    # Convert to grayscale
+    enhanced_image = ImageOps.autocontrast(grayscale_image)        # Auto-enhance contrast
+    sharpener = ImageEnhance.Sharpness(enhanced_image)             
+    sharpened_image = sharpener.enhance(2.0)                       # Increase sharpness
+    denoised_image = sharpened_image.filter(ImageFilter.MedianFilter(size=3))  # Denoise
+    binary_image = denoised_image.point(lambda x: 0 if x < 150 else 255)       # Binarize
     return binary_image
 
 def extract_text(image):
@@ -53,6 +59,9 @@ def draw_boxes_on_image(image, boxes):
         draw.rectangle([left, top, right, bottom], outline="red", width=2)
     return image
 
+# ------------------------
+# TEXT EXTRACTION
+# ------------------------
 def extract_dates(text):
     """Extract dates from text in multiple formats."""
     date_patterns = [
@@ -159,6 +168,9 @@ def parse_receipt_text_enhanced(text):
         structured_data[field] = find_value_near_keywords(lines, keywords)
     return structured_data
 
+# ------------------------
+# EXCEL EXPORT
+# ------------------------
 def create_excel(receipt_data):
     """Generate an Excel file from the parsed receipt data."""
     wb = openpyxl.Workbook()
@@ -181,46 +193,46 @@ def create_excel(receipt_data):
     return buffer
 
 # ------------------------
-# Streamlit App Interface
+# STREAMLIT APP INTERFACE
 # ------------------------
-st.title("Receipt Processor with Enhanced Blurry Slip Detection")
+st.title("💸 Receipt Processor with Enhanced Blurry Slip Detection")
 
-uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📤 Upload Receipt Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Receipt", use_column_width=True)
+    st.image(image, caption="🖼️ Uploaded Receipt", use_container_width=True)  # Updated here
     
     processed_image = preprocess_image(image)
     extracted_text = extract_text(processed_image)
     boxes = extract_data_with_boxes(processed_image)
     
-    st.subheader("Raw OCR Text")
+    st.subheader("📜 Raw OCR Text")
     st.text(extracted_text)
     
-    if st.button("Show Image with Bounding Boxes"):
+    if st.button("🔍 Show Image with Bounding Boxes"):
         image_with_boxes = draw_boxes_on_image(processed_image.copy(), boxes)
-        st.image(image_with_boxes, caption="Image with Bounding Boxes", use_column_width=True)
+        st.image(image_with_boxes, caption="🗃️ Image with Bounding Boxes", use_container_width=True)  # Updated here
     
     receipt_data = parse_receipt_text_enhanced(extracted_text)
     
-    st.subheader("Extracted Receipt Data")
-    st.write("**Company Name:**", receipt_data.get("Company Name"))
-    st.write("**Dates Found:**", receipt_data.get("Dates"))
-    st.write("**Subtotal:**", receipt_data.get("Subtotal"))
-    st.write("**Tax (VAT):**", receipt_data.get("Tax (VAT)"))
-    st.write("**Total:**", receipt_data.get("Total"))
-    st.write("**Amounts (if any):**", receipt_data.get("Amounts"))
-    st.write("**Items:**")
+    st.subheader("📋 Extracted Receipt Data")
+    st.write("**🏢 Company Name:**", receipt_data.get("Company Name"))
+    st.write("**📅 Dates Found:**", receipt_data.get("Dates"))
+    st.write("**💵 Subtotal:**", receipt_data.get("Subtotal"))
+    st.write("**💰 Tax (VAT):**", receipt_data.get("Tax (VAT)"))
+    st.write("**🧾 Total:**", receipt_data.get("Total"))
+    st.write("**💸 Amounts (if any):**", receipt_data.get("Amounts"))
+    st.write("**📦 Items:**")
     for item in receipt_data.get("Items", []):
         st.write(f"- {item['Item']}: {item['Price']}")
     
     excel_buffer = create_excel(receipt_data)
     st.download_button(
-        label="Download Excel File",
+        label="📥 Download Excel File",
         data=excel_buffer,
         file_name="receipt_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 else:
-    st.write("Please upload a receipt image.")
+    st.write("📂 Please upload a receipt image.")
