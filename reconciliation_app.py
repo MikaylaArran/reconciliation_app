@@ -1,12 +1,4 @@
-try:
-    import openpyxl
-except ModuleNotFoundError:
-    import sys
-    import subprocess
-    print("openpyxl not found. Installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl"])
-    import openpyxl
-
+import openpyxl
 from PIL import Image, ImageOps, ImageFilter, ImageDraw
 import pytesseract
 import re
