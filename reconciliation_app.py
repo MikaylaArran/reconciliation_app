@@ -101,7 +101,7 @@ def parse_receipt_text(text):
     return structured_data
 
 # Streamlit App Interface
-st.title("Improved Receipt Processor (No OpenCV)")
+st.title("Reconciliation")
 
 # Upload file
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
