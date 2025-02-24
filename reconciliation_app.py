@@ -3,35 +3,53 @@ from PIL import Image, ImageOps, ImageFilter, ImageDraw, ImageEnhance
 import pytesseract
 import re
 import io
+import cv2
+import numpy as np
 import streamlit as st
 
 # ------------------------
 # CONFIGURATION
 # ------------------------
 # Configure Tesseract OCR path (update if necessary)
-pytesseract.pytesseract_cmd = "/usr/bin/tesseract"
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update for Windows or Mac if needed
 
 # ------------------------
 # IMAGE PROCESSING
 # ------------------------
 def preprocess_image(image):
     """Preprocess the image to improve OCR results, especially for blurry slips."""
-    grayscale_image = ImageOps.grayscale(image)                    # Convert to grayscale
-    enhanced_image = ImageOps.autocontrast(grayscale_image)        # Auto-enhance contrast
-    sharpener = ImageEnhance.Sharpness(enhanced_image)             
-    sharpened_image = sharpener.enhance(2.0)                       # Increase sharpness
-    denoised_image = sharpened_image.filter(ImageFilter.MedianFilter(size=3))  # Denoise
-    binary_image = denoised_image.point(lambda x: 0 if x < 150 else 255)       # Binarize
-    return binary_image
+    # Convert PIL image to OpenCV format
+    image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    image_cv = cv2.resize(image_cv, (1024, 1024), interpolation=cv2.INTER_AREA)  # Resize to optimize performance
+    
+    # Convert to grayscale
+    gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
+    
+    # Sharpen image using kernel
+    kernel = np.array([[0, -1, 0], 
+                       [-1, 5,-1], 
+                       [0, -1, 0]])
+    sharpened = cv2.filter2D(gray, -1, kernel)
+    
+    # Apply Gaussian Blur to reduce noise
+    blurred = cv2.GaussianBlur(sharpened, (3, 3), 0)
+    
+    # Thresholding
+    _, binary = cv2.threshold(blurred, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # Convert back to PIL format
+    processed_image = Image.fromarray(binary)
+    return processed_image
 
 def extract_text(image):
     """Extract text from the image using Tesseract."""
-    ocr_config = r'--oem 3 --psm 6'
+    # Use a more flexible OCR config for blurry text
+    ocr_config = r'--oem 3 --psm 4'  # PSM 4 works better for text blocks with blurry or skewed text
     return pytesseract.image_to_string(image, config=ocr_config)
 
 def extract_data_with_boxes(image):
     """Extract text and bounding box data from the image."""
-    ocr_config = r'--oem 3 --psm 6'
+    ocr_config = r'--oem 3 --psm 4'
     data = pytesseract.image_to_data(image, config=ocr_config, output_type=pytesseract.Output.DICT)
     boxes = []
     for i in range(len(data['level'])):
@@ -39,7 +57,7 @@ def extract_data_with_boxes(image):
             conf = float(data['conf'][i])
         except:
             conf = 0
-        if conf > 50 and data['text'][i].strip():
+        if conf > 45 and data['text'][i].strip():
             boxes.append({
                 'text': data['text'][i],
                 'left': data['left'][i],
@@ -67,10 +85,8 @@ def extract_dates(text):
     date_patterns = [
         r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',  
         r'\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b',   
-        r'\b\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|'
-        r'Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{2,4}\b',
-        r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
-        r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},\s+\d{2,4}\b',
+        r'\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}\b',
+        r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},\s+\d{2,4}\b',
         r'\b\d{1,2}\.\d{1,2}\.\d{2,4}\b'
     ]
     dates = []
@@ -195,13 +211,13 @@ def create_excel(receipt_data):
 # ------------------------
 # STREAMLIT APP INTERFACE
 # ------------------------
-st.title("Receipt Processor")
+st.title("Receipt Processor with Enhanced Blurry Slip Detection")
 
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption=" Uploaded Receipt", use_container_width=True)  # Updated here
+    st.image(image, caption="Uploaded Receipt", use_container_width=True)  
     
     processed_image = preprocess_image(image)
     extracted_text = extract_text(processed_image)
@@ -212,7 +228,7 @@ if uploaded_file:
     
     if st.button("Show Image with Bounding Boxes"):
         image_with_boxes = draw_boxes_on_image(processed_image.copy(), boxes)
-        st.image(image_with_boxes, caption="Image with Bounding Boxes", use_container_width=True)  # Updated here
+        st.image(image_with_boxes, caption="Image with Bounding Boxes", use_container_width=True)  
     
     receipt_data = parse_receipt_text_enhanced(extracted_text)
     
