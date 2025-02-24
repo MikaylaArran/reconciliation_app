@@ -4,3 +4,5 @@ pdf2image
 pillow
 fpdf
 openpyxl
+opencv-python
+numpy
