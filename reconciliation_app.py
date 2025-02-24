@@ -211,7 +211,7 @@ def create_excel(receipt_data):
 # ------------------------
 # STREAMLIT APP INTERFACE
 # ------------------------
-st.title("Receipt Processor with Enhanced Blurry Slip Detection")
+st.title("Receipt Processor")
 
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
 
