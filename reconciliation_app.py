@@ -1,84 +1,188 @@
 import streamlit as st
-from PIL import Image, ImageOps, ImageFilter
+from PIL import Image, ImageOps, ImageFilter, ImageDraw
 import pytesseract
 import re
+import openpyxl
+import io
 
 # Configure Tesseract OCR path
-pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update the path if necessary.
+pytesseract.pytesseract_cmd = "/usr/bin/tesseract"  # Update if necessary
 
-# Preprocess image for OCR
+# ------------------------
+# Image Preprocessing
+# ------------------------
 def preprocess_image(image):
     # Convert to grayscale
     grayscale_image = ImageOps.grayscale(image)
-
     # Adjust contrast
     enhanced_image = ImageOps.autocontrast(grayscale_image)
-
-    # Denoise image (smooth out irregularities)
+    # Denoise image (using a median filter)
     denoised_image = enhanced_image.filter(ImageFilter.MedianFilter(size=3))
-
     # Apply binary thresholding
     binary_image = denoised_image.point(lambda x: 0 if x < 150 else 255)
-
     return binary_image
 
-# Extract text from the preprocessed image
+# ------------------------
+# OCR Extraction
+# ------------------------
 def extract_text(image):
     ocr_config = r'--oem 3 --psm 6'
     return pytesseract.image_to_string(image, config=ocr_config)
 
-# Find field value near keywords
-def find_value_near_keywords(lines, keywords, value_pattern=r"(\d{1,3}(?:,\d{3})*\.\d{2})"):
+def extract_data_with_boxes(image):
+    ocr_config = r'--oem 3 --psm 6'
+    data = pytesseract.image_to_data(image, config=ocr_config, output_type=pytesseract.Output.DICT)
+    n_boxes = len(data['level'])
+    boxes = []
+    for i in range(n_boxes):
+        try:
+            conf = float(data['conf'][i])
+        except:
+            conf = 0
+        if conf > 50 and data['text'][i].strip():
+            boxes.append({
+                'text': data['text'][i],
+                'left': data['left'][i],
+                'top': data['top'][i],
+                'width': data['width'][i],
+                'height': data['height'][i],
+                'conf': conf
+            })
+    return boxes
+
+def draw_boxes_on_image(image, boxes):
+    draw = ImageDraw.Draw(image)
+    for box in boxes:
+        left = box['left']
+        top = box['top']
+        right = left + box['width']
+        bottom = top + box['height']
+        draw.rectangle([left, top, right, bottom], outline="red", width=2)
+    return image
+
+# ------------------------
+# Advanced Field Extraction
+# ------------------------
+def extract_dates(text):
+    """Extract dates in multiple formats."""
+    date_patterns = [
+        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',                     # 12/31/2020 or 31-12-2020
+        r'\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b',                       # 2020-12-31
+        r'\b\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|'
+        r'Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|'
+        r'Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{2,4}\b',  # 31 Jan 2020
+        r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|'
+        r'Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|'
+        r'Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},\s+\d{2,4}\b',    # Jan 31, 2020
+        r'\b\d{1,2}\.\d{1,2}\.\d{2,4}\b'                          # 31.12.2020
+    ]
+    dates = []
+    for pattern in date_patterns:
+        found = re.findall(pattern, text, re.IGNORECASE)
+        if found:
+            dates.extend(found)
+    return list(set(dates))
+
+def extract_amounts(text):
+    """Extract currency amounts in various formats."""
+    amount_patterns = [
+        # Pattern: Currency symbol then number (allowing thousand separators like commas or dots)
+        r'([€£$R])\s?(\d{1,3}(?:[,\.\s]\d{3})*(?:[,\.\s]\d{2})?)',
+        # Pattern: Number then currency code (USD, EUR, GBP, ZAR)
+        r'(\d{1,3}(?:[,\.\s]\d{3})*(?:[,\.\s]\d{2})?)\s?(USD|EUR|GBP|ZAR)'
+    ]
+    amounts = []
+    for pattern in amount_patterns:
+        matches = re.findall(pattern, text)
+        for match in matches:
+            if isinstance(match, tuple):
+                # Decide which group is the currency symbol/code and which is the number
+                if re.match(r'[$€£R]', match[0]):
+                    symbol = match[0]
+                    num_str = match[1]
+                else:
+                    symbol = match[1]
+                    num_str = match[0]
+                # Normalize: remove spaces and commas (assumes period as decimal separator)
+                num_clean = num_str.replace(" ", "").replace(",", "")
+                try:
+                    amount_value = float(num_clean)
+                    amounts.append((symbol, amount_value))
+                except:
+                    pass
+            else:
+                try:
+                    amt = float(match.replace(" ", "").replace(",", ""))
+                    amounts.append(("", amt))
+                except:
+                    pass
+    return amounts
+
+def extract_company_name(text):
+    """Heuristic to extract a company name (typically at the top)."""
+    lines = text.split("\n")
+    # First, try to find a line with enough alphabetic characters and a fair share of uppercase letters.
+    for line in lines[:5]:
+        cline = line.strip()
+        if cline and len(cline) > 3 and re.search(r'[A-Za-z]', cline):
+            if sum(1 for c in cline if c.isupper()) >= len(cline) * 0.3:
+                return cline
+    # Fallback to first non-empty line
+    for line in lines:
+        if line.strip():
+            return line.strip()
+    return None
+
+def extract_items(text):
+    """Attempt to extract items with prices from receipt text."""
+    lines = text.split("\n")
+    items = []
+    # This pattern looks for a description followed by whitespace and then a price at the end.
+    item_pattern = r'^(.*?)[\s\-:]+([\d,]+\.\d{2})$'
+    for line in lines:
+        match = re.match(item_pattern, line)
+        if match:
+            item_name = match.group(1).strip()
+            try:
+                price = float(match.group(2).replace(",", ""))
+            except:
+                price = None
+            items.append({"Item": item_name, "Price": price})
+    return items
+
+def find_value_near_keywords(lines, keywords, value_pattern=r"(\d{1,3}(?:[,\.\s]\d{3})*(?:[,\.\s]\d{2}))"):
+    """
+    Searches lines for any of the keywords and returns the first value found.
+    This is used for fields like Subtotal, Tax, and Total.
+    """
     for i, line in enumerate(lines):
         for keyword in keywords:
             if re.search(keyword, line, re.IGNORECASE):
-                # Search for value in the same line
                 value_match = re.search(value_pattern, line)
                 if value_match:
-                    return float(value_match.group(1).replace(",", ""))
-                # If no value in the same line, check the next line
+                    try:
+                        return float(value_match.group(1).replace(" ", "").replace(",", ""))
+                    except:
+                        pass
                 elif i + 1 < len(lines):
                     next_line_match = re.search(value_pattern, lines[i + 1])
                     if next_line_match:
-                        return float(next_line_match.group(1).replace(",", ""))
+                        try:
+                            return float(next_line_match.group(1).replace(" ", "").replace(",", ""))
+                        except:
+                            pass
     return None
 
-# Parse receipt text into structured fields
-def parse_receipt_text(text):
+def parse_receipt_text_enhanced(text):
+    """Parse the OCR text using all enhanced extraction functions."""
+    structured_data = {}
+    structured_data["Company Name"] = extract_company_name(text)
+    structured_data["Dates"] = extract_dates(text)
+    structured_data["Amounts"] = extract_amounts(text)
+    structured_data["Items"] = extract_items(text)
+    
+    # Use original line-by-line approach for totals, tax, etc.
     lines = text.split("\n")
-    structured_data = {
-        "Company Name": None,
-        "Date": None,
-        "Items": [],
-        "Subtotal": None,
-        "Tax (VAT)": None,
-        "Total": None
-    }
-
-    # Extract company name (assume it's in the first few lines)
-    for line in lines[:3]:
-        if line.strip():
-            structured_data["Company Name"] = line.strip()
-            break
-
-    # Extract date using regex
-    date_pattern = r'\d{1,2} [A-Za-z]{3,} \d{4}'
-    for line in lines:
-        date_match = re.search(date_pattern, line)
-        if date_match:
-            structured_data["Date"] = date_match.group()
-            break
-
-    # Extract items and their prices
-    item_pattern = r'(.*)\s+R?\s?(\d{1,3}(?:,\d{3})*\.\d{2})$'
-    for line in lines:
-        item_match = re.match(item_pattern, line)
-        if item_match:
-            item_name = item_match.group(1).strip()
-            item_price = float(item_match.group(2).replace(",", ""))
-            structured_data["Items"].append({"Item": item_name, "Price": item_price})
-
-    # Synonyms for Subtotal, Tax (VAT), and Total
     synonyms = {
         "Subtotal": [
             r'subtotal', r'sub-total', r'net amount', r'amount before vat',
@@ -93,42 +197,89 @@ def parse_receipt_text(text):
             r'inclusive total', r'amount due', r'balance due'
         ]
     }
-
-    # Extract Subtotal, Tax (VAT), and Total
     for field, keywords in synonyms.items():
         structured_data[field] = find_value_near_keywords(lines, keywords)
-
+    
     return structured_data
 
-# Streamlit App Interface
-st.title("Reconciliation")
+# ------------------------
+# Excel Export
+# ------------------------
+def create_excel(receipt_data):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Receipt Data"
+    # Write header fields
+    ws.append(["Field", "Value"])
+    for key in ["Company Name"]:
+        ws.append([key, receipt_data.get(key)])
+    # Write dates as a comma-separated list
+    ws.append(["Dates", ", ".join(receipt_data.get("Dates", []))])
+    for field in ["Subtotal", "Tax (VAT)", "Total"]:
+        ws.append([field, receipt_data.get(field)])
+    # Write extracted amounts (if any)
+    amounts = receipt_data.get("Amounts", [])
+    if amounts:
+        amounts_str = ", ".join([f"{sym}{amt:.2f}" for sym, amt in amounts])
+    else:
+        amounts_str = ""
+    ws.append(["Amounts", amounts_str])
+    # Leave a blank row before listing items
+    ws.append([])
+    ws.append(["Items", "Price"])
+    for item in receipt_data.get("Items", []):
+        ws.append([item["Item"], item["Price"]])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
 
-# Upload file
+# ------------------------
+# Streamlit App Interface
+# ------------------------
+st.title("Enhanced Receipt Processor with Multi‑Format Extraction")
+
 uploaded_file = st.file_uploader("Upload Receipt Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    # Load the image
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Receipt", use_column_width=True)
-
-    # Preprocess and process the image
+    
     processed_image = preprocess_image(image)
+    
+    # Extract OCR text and detailed bounding box data
     extracted_text = extract_text(processed_image)
-
-    # Display raw OCR text for debugging
-    st.text(f"Raw OCR Text:\n{extracted_text}")
-
-    # Parse the extracted text
-    receipt_data = parse_receipt_text(extracted_text)
-
-    # Display the structured data
+    boxes = extract_data_with_boxes(processed_image)
+    
+    st.subheader("Raw OCR Text")
+    st.text(extracted_text)
+    
+    # Option to view bounding boxes
+    if st.button("Show Image with Bounding Boxes"):
+        image_with_boxes = draw_boxes_on_image(processed_image.copy(), boxes)
+        st.image(image_with_boxes, caption="Image with Bounding Boxes", use_column_width=True)
+    
+    # Parse the OCR text using our enhanced functions
+    receipt_data = parse_receipt_text_enhanced(extracted_text)
+    
     st.subheader("Extracted Receipt Data")
-    for key, value in receipt_data.items():
-        if key == "Items":
-            st.write(f"{key}:")
-            for item in value:
-                st.write(f"  - {item['Item']}: {item['Price']}")
-        else:
-            st.write(f"{key}: {value}")
+    st.write("**Company Name:**", receipt_data.get("Company Name"))
+    st.write("**Dates Found:**", receipt_data.get("Dates"))
+    st.write("**Subtotal:**", receipt_data.get("Subtotal"))
+    st.write("**Tax (VAT):**", receipt_data.get("Tax (VAT)"))
+    st.write("**Total:**", receipt_data.get("Total"))
+    st.write("**Amounts (any found):**", receipt_data.get("Amounts"))
+    st.write("**Items:**")
+    for item in receipt_data.get("Items", []):
+        st.write(f"- {item['Item']}: {item['Price']}")
+    
+    # Provide a download button for the Excel file if data is available
+    excel_buffer = create_excel(receipt_data)
+    st.download_button(
+        label="Download Excel File",
+        data=excel_buffer,
+        file_name="receipt_data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 else:
     st.write("Please upload a receipt image.")
